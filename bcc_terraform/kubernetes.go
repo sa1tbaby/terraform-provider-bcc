@@ -44,8 +44,11 @@ func (args *Arguments) injectCreateKubernetes() {
 			Description: "name of the kubernetes",
 		},
 		"platform": {
-			Type:        schema.TypeString,
-			Required:    true,
+			Type:     schema.TypeString,
+			Required: true,
+			ValidateFunc: validation.All(
+				validation.StringIsNotEmpty,
+			),
 			ForceNew:    true,
 			Description: "type of cpu platform",
 		},

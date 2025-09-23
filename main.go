@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 
-	"github.com/basis-cloud/terraform-provider-bcc/bcc_terraform"
+	"github.com/sa1tbaby/terraform-provider-bcc/bcc_terraform"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/plugin"
 )

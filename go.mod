@@ -1,4 +1,4 @@
-module github.com/basis-cloud/terraform-provider-bcc
+module github.com/sa1tbaby/terraform-provider-bcc
 
 go 1.21
 

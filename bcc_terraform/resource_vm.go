@@ -188,6 +188,10 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 		return diag.Errorf("id: Error getting vm: %s", err)
 	}
 
+	if diags := syncNetworks(d, manager, vm); diags.HasError() {
+		return diags
+	}
+
 	// Detect vm changes
 	if d.HasChange("name") {
 		needUpdate = true
@@ -212,19 +216,6 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 		needPowerOn = true
 	}
 
-	if diags := syncPorts(d, manager, targetVdc, vm); diags.HasError() {
-		return diags
-	}
-
-	if d.HasChange("floating") {
-		needUpdate = true
-		if !d.Get("floating").(bool) {
-			vm.Floating = &bcc.Port{IpAddress: nil}
-		} else {
-			vm.Floating = &bcc.Port{ID: "RANDOM_FIP"}
-		}
-		d.Set("floating", vm.Floating != nil)
-	}
 	if d.HasChange("tags") {
 		needUpdate = true
 		vm.Tags = unmarshalTagNames(d.Get("tags"))
@@ -327,7 +318,11 @@ func syncNetworks(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) (err
 	}
 
 	if olfFloating.(bool) && !newFloating.(bool) {
-		//delete floating
+		vm.Floating = &bcc.Port{IpAddress: nil}
+		d.Set("floating", vm.Floating != nil)
+		if err := repeatOnError(vm.Update, vm); err != nil {
+			return diag.Errorf("Error with deletting floating for vm: %s", err)
+		}
 	}
 
 	for _, item := range oldNetworks.([]interface{}) {
@@ -349,7 +344,11 @@ func syncNetworks(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) (err
 	}
 
 	if newFloating.(bool) {
-		//add floating
+		vm.Floating = &bcc.Port{ID: "RANDOM_FIP"}
+		d.Set("floating", vm.Floating != nil)
+		if err := repeatOnError(vm.Update, vm); err != nil {
+			return diag.Errorf("Error with adding floating for vm: %s", err)
+		}
 	}
 
 	return nil

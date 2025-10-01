@@ -66,6 +66,7 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 	cpu := d.Get("cpu").(int)
 	ram := d.Get("ram").(float64)
 	userData := d.Get("user_data").(string)
+	hotAdd := d.Get("hot_add").(bool)
 	log.Printf(vmName, cpu, ram, userData, template.Name)
 
 	// System disk creation
@@ -97,8 +98,7 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		floatingIp = &floatingIpStr
 	}
 
-	newVm := bcc.NewVm(vmName, cpu, ram, template, nil, &userData, ports,
-		systemDiskList, floatingIp)
+	newVm := bcc.NewVm(vmName, cpu, ram, template, nil, &userData, ports, systemDiskList, floatingIp, hotAdd)
 	newVm.Tags = unmarshalTagNames(d.Get("tags"))
 
 	err = targetVdc.CreateVm(&newVm)
@@ -148,6 +148,7 @@ func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{
 	d.Set("ram", vm.Ram)
 	d.Set("template_id", vm.Template.ID)
 	d.Set("power", vm.Power)
+	d.Set("hot_add", vm.HotAdd)
 
 	flattenDisks := make([]string, len(vm.Disks)-1)
 	for i, disk := range vm.Disks {
@@ -216,6 +217,11 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 		hasFlavorChanged = true
 		vm.Cpu = d.Get("cpu").(int)
 		vm.Ram = d.Get("ram").(float64)
+	}
+
+	if d.HasChange("hot_add") {
+		needUpdate = true
+		vm.HotAdd = d.Get("hot_add").(bool)
 	}
 
 	needPowerOn := false

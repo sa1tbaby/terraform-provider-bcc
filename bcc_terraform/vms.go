@@ -138,6 +138,12 @@ func (args *Arguments) injectCreateVm() {
 			Default:     true,
 			Description: "power of vw on/off",
 		},
+		"hot_add": {
+			Type:        schema.TypeBool,
+			Optional:    true,
+			Default:     false,
+			Description: "Enabling resources hot swap for vm",
+		},
 	})
 }
 

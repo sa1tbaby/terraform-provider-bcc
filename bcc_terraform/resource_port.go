@@ -35,10 +35,12 @@ func resourcePort() *schema.Resource {
 
 func resourcePortCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
+
 	targetVdc, err := GetVdcById(d, manager)
 	if err != nil {
 		return diag.Errorf("vdc_id: Error getting VDC: %s", err)
 	}
+
 	portNetwork, err := GetNetworkById(d, manager, nil)
 	if err != nil {
 		return diag.Errorf("Error getting network: %s", err)

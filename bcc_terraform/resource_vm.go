@@ -32,24 +32,6 @@ func resourceVm() *schema.Resource {
 	}
 }
 
-func getVmPortsIds(d *schema.ResourceData) (portsIds []string) {
-	if d.HasChange("ports") {
-		portsIdsValue := d.Get("ports").([]interface{})
-		portsIds = make([]string, 0, len(portsIdsValue))
-		for _, portIdValue := range portsIdsValue {
-			portsIds = append(portsIds, portIdValue.(string))
-		}
-	} else {
-		networks := d.Get("networks").([]interface{})
-		portsIds = make([]string, 0, len(networks))
-		for _, network := range networks {
-			portMap := network.(map[string]interface{})
-			portsIds = append(portsIds, portMap["id"].(string))
-		}
-	}
-	return
-}
-
 func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 	targetVdc, err := GetVdcById(d, manager)
@@ -83,7 +65,7 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 	newDisk := bcc.NewDisk("Основной диск", diskSize, storageProfile)
 	systemDiskList[0] = &newDisk
 
-	portsIds := getVmPortsIds(d)
+	portsIds := collectVmNetworks(d)
 	ports := make([]*bcc.Port, len(portsIds))
 	for i, portId := range portsIds {
 		port, err := manager.GetPort(portId)
@@ -313,7 +295,138 @@ func resourceVmDelete(ctx context.Context, d *schema.ResourceData, meta interfac
 	if err != nil {
 		return diag.Errorf("Error deleting vm: %s", err)
 	}
-	vm.WaitLock()
+
+	if err = vm.WaitLock(); err != nil {
+		return diag.FromErr(err)
+	}
+
+	return nil
+}
+
+func syncNetworks(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) (err diag.Diagnostics) {
+	var targetDefinition string
+
+	if d.HasChange("networks") {
+		targetDefinition = "networks"
+	} else if d.HasChange("ports") {
+		targetDefinition = "ports"
+	} else {
+		return nil
+	}
+
+	oldNetworks, newNetworks := d.GetChange(targetDefinition)
+	olfFloating, newFloating := d.GetChange("floating")
+
+	newNetworksSet := make(map[string]bool)
+	for _, item := range newNetworks.([]interface{}) {
+		newNetworksSet[item.(string)] = true
+	}
+
+	if len(newNetworksSet) == 0 && newFloating.(bool) {
+		return diag.Errorf("floating cannot be added without existing networks")
+	}
+
+	if olfFloating.(bool) && !newFloating.(bool) {
+		//delete floating
+	}
+
+	for _, item := range oldNetworks.([]interface{}) {
+		if newNetworksSet[item.(string)] {
+			delete(newNetworksSet, item.(string))
+		} else {
+			if err = DisconnectOldPort(item.(string), manager, vm); err != nil {
+				log.Printf("Error disconnecting new port: %v", err)
+				return err
+			}
+		}
+	}
+
+	for item := range newNetworksSet {
+		if err = ConnectNewPort(item, manager, vm); err != nil {
+			log.Printf("Error connecting new port: %v", err)
+			return err
+		}
+	}
+
+	if newFloating.(bool) {
+		//add floating
+	}
+
+	return nil
+}
+
+func collectVmNetworks(d *schema.ResourceData) []string {
+	portsIds := parseVmPorts(d.Get("ports"))
+	networksIds := parseVmNetworks(d.Get("networks"))
+
+	if len(networksIds) == 0 && len(portsIds) != 0 {
+		return portsIds
+	} else {
+		return networksIds
+	}
+}
+
+func parseVmPorts(d interface{}) (portsIds []string) {
+	ports := d.([]interface{})
+	portsIds = make([]string, 0, len(ports))
+	for _, portIdValue := range ports {
+		portsIds = append(portsIds, portIdValue.(string))
+	}
+
+	return
+}
+
+func parseVmNetworks(d interface{}) (networksIds []string) {
+	networks := d.([]interface{})
+	networksIds = make([]string, 0, len(networks))
+	for _, network := range networks {
+		portMap := network.(map[string]interface{})
+		networksIds = append(networksIds, portMap["id"].(string))
+	}
+	return
+}
+
+func ConnectNewPort(portId string, manager *bcc.Manager, vm *bcc.Vm) diag.Diagnostics {
+	port, err := manager.GetPort(portId)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	if port.Connected != nil && port.Connected.ID != vm.ID {
+		if err = vm.DisconnectPort(port); err != nil {
+			return diag.FromErr(err)
+		}
+		if err = vm.WaitLock(); err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	log.Printf("Port `%s` will be Attached", port.ID)
+
+	if err = vm.ConnectPort(port, true); err != nil {
+		return diag.Errorf("Ports: Error Cannot attach port `%s`: %s", port.ID, err)
+	}
+
+	return nil
+}
+
+func DisconnectOldPort(portId string, manager *bcc.Manager, vm *bcc.Vm) diag.Diagnostics {
+	port, err := manager.GetPort(portId)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	if port.Connected != nil && port.Connected.ID == vm.ID {
+		log.Printf("Port %s found on vm and not mentioned in the state."+
+			" Port will be detached", port.ID)
+
+		if err := vm.DisconnectPort(port); err != nil {
+			return diag.FromErr(err)
+		}
+		if err = vm.WaitLock(); err != nil {
+			return diag.FromErr(err)
+		}
+	}
 
 	return nil
 }
@@ -370,86 +483,7 @@ func syncDisks(d *schema.ResourceData, manager *bcc.Manager, vdc *bcc.Vdc, vm *b
 	return
 }
 
-func syncPorts(d *schema.ResourceData, manager *bcc.Manager, vdc *bcc.Vdc, vm *bcc.Vm) (diagErr diag.Diagnostics) {
-
-	// Delete ConnectNewPort ports and create a new if connected
-	diagErr = DisconnectOldPort(d, manager, vm)
-	if diagErr != nil {
-		return
-
-	}
-
-	diagErr = ConnectNewPort(d, manager, vm)
-	if diagErr != nil {
-		return
-	}
-
-	return
-}
-
-func ConnectNewPort(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) (diagErr diag.Diagnostics) {
-	portsIds := getVmPortsIds(d)
-	for _, portId := range portsIds {
-		found := false
-		for _, port := range vm.Ports {
-			if port.ID == portId {
-				found = true
-				break
-			}
-		}
-
-		if !found {
-			port, err := manager.GetPort(portId)
-
-			if err != nil {
-				diagErr = diag.FromErr(err)
-				return
-			}
-			if port.Connected != nil && port.Connected.ID != vm.ID {
-
-				if err := vm.DisconnectPort(port); err != nil {
-					return diag.FromErr(err)
-				}
-				vm.WaitLock()
-			}
-			log.Printf("Port `%s` will be Attached", port.ID)
-
-			if err := vm.ConnectPort(port, true); err != nil {
-				diagErr = diag.Errorf("Ports: Error Cannot attach port `%s`: %s", port.ID, err)
-				return
-			}
-		}
-	}
-	return
-}
-
-func DisconnectOldPort(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) diag.Diagnostics {
-	portsIds := getVmPortsIds(d)
-	for _, port := range vm.Ports {
-		found := false
-		for _, portId := range portsIds {
-			if portId == port.ID {
-				found = true
-				break
-			}
-		}
-		if !found {
-			if port.Connected != nil && port.Connected.ID == vm.ID {
-				log.Printf("Port %s found on vm and not mentioned in the state."+
-					" Port will be detached", port.ID)
-
-				if err := vm.DisconnectPort(port); err != nil {
-					return diag.FromErr(err)
-				}
-				vm.WaitLock()
-			}
-		}
-	}
-
-	return nil
-}
-
-func attachNewDisk(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) (diagErr diag.Diagnostics) {
+func attachNewDisk(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) diag.Diagnostics {
 	disksIds := d.Get("disks").(*schema.Set).List()
 	// Save system_disk
 	systemDiskResource := d.Get("system_disk.0")

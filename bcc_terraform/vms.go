@@ -110,7 +110,7 @@ func (args *Arguments) injectCreateVm() {
 					"id": {
 						Type:        schema.TypeString,
 						Required:    true,
-						Description: "Id of the Port",
+						Description: "Id of the network",
 					},
 					"ip_address": {
 						Type:        schema.TypeString,

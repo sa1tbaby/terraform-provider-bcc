@@ -217,21 +217,6 @@ func (args *Arguments) injectResultVm() {
 	})
 }
 
-func (args *Arguments) injectResultListVm() {
-	s := Defaults()
-	s.injectResultVm()
-
-	args.merge(Arguments{
-		"vms": {
-			Type:     schema.TypeList,
-			Computed: true,
-			Elem: &schema.Resource{
-				Schema: s,
-			},
-		},
-	})
-}
-
 func (args *Arguments) injectSystemDisk() {
 	args.merge(Arguments{
 		"id": {

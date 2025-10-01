@@ -88,10 +88,15 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		return diag.Errorf("Error creating vm: %s", err)
 	}
 
-	newVm.WaitLock()
-	vm_power := d.Get("power").(bool)
-	if !vm_power {
-		newVm.PowerOff()
+	if err = newVm.WaitLock(); err != nil {
+		return diag.FromErr(err)
+	}
+
+	vmPower := d.Get("power").(bool)
+	if !vmPower {
+		if err = newVm.PowerOff(); err != nil {
+			return diag.FromErr(err)
+		}
 	}
 
 	systemDisk := make([]interface{}, 1)
@@ -212,7 +217,9 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 
 	needPowerOn := false
 	if hasFlavorChanged && !vm.HotAdd && vm.Power {
-		vm.PowerOff()
+		if err = vm.PowerOff(); err != nil {
+			return diag.FromErr(err)
+		}
 		needPowerOn = true
 	}
 
@@ -228,13 +235,19 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 	}
 
 	if needPowerOn {
-		vm.PowerOn()
+		if err = vm.PowerOn(); err != nil {
+			return diag.FromErr(err)
+		}
 	} else if d.HasChange("power") {
 		a := d.Get("power").(bool)
 		if a {
-			vm.PowerOn()
+			if err = vm.PowerOn(); err != nil {
+				return diag.FromErr(err)
+			}
 		} else {
-			vm.PowerOff()
+			if err = vm.PowerOff(); err != nil {
+				return diag.FromErr(err)
+			}
 		}
 	}
 
@@ -256,7 +269,10 @@ func resourceVmDelete(ctx context.Context, d *schema.ResourceData, meta interfac
 	if err := repeatOnError(vm.Update, vm); err != nil {
 		return diag.Errorf("Error updating vm: %s", err)
 	}
-	vm.WaitLock()
+
+	if err = vm.WaitLock(); err != nil {
+		return diag.FromErr(err)
+	}
 
 	disksIds := d.Get("disks").(*schema.Set).List()
 	for _, diskId := range disksIds {
@@ -264,13 +280,12 @@ func resourceVmDelete(ctx context.Context, d *schema.ResourceData, meta interfac
 		if err != nil {
 			return diag.FromErr(err)
 		}
-		err = vm.DetachDisk(disk)
-		if err != nil {
+		if err = vm.DetachDisk(disk); err != nil {
 			return diag.FromErr(err)
 		}
 	}
 
-	portsIds := getVmPortsIds(d)
+	portsIds := collectVmNetworks(d)
 	for _, portId := range portsIds {
 		port, err := manager.GetPort(portId)
 		if err != nil {
@@ -280,7 +295,10 @@ func resourceVmDelete(ctx context.Context, d *schema.ResourceData, meta interfac
 			return diag.FromErr(err)
 		}
 	}
-	vm.WaitLock()
+
+	if err = vm.WaitLock(); err != nil {
+		return diag.FromErr(err)
+	}
 
 	err = vm.Delete()
 	if err != nil {
@@ -489,7 +507,7 @@ func attachNewDisk(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) dia
 	systemDisk := systemDiskResource.(map[string]interface{})["id"].(string)
 	var needReload bool
 	disksIds = append(disksIds, systemDisk)
-	vm_id := vm.ID
+	vmId := vm.ID
 
 	for _, diskId := range disksIds {
 		found := false
@@ -503,22 +521,27 @@ func attachNewDisk(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) dia
 		if !found {
 			disk, err := manager.GetDisk(diskId.(string))
 			if err != nil {
-				diagErr = diag.FromErr(err)
-				return
+				return diag.FromErr(err)
 			}
-			if disk.Vm != nil && disk.Vm.ID != vm_id {
+
+			if disk.Vm != nil && disk.Vm.ID != vmId {
 				log.Printf("Disk %s found on other vm and will be detached for attached to vm.", disk.ID)
-				vm.DetachDisk(disk)
-				if err := vm.Reload(); err != nil {
+				if err = vm.DetachDisk(disk); err != nil {
 					return diag.FromErr(err)
 				}
-				vm.WaitLock()
+				if err = vm.Reload(); err != nil {
+					return diag.FromErr(err)
+				}
+				if err = vm.WaitLock(); err != nil {
+					return diag.FromErr(err)
+				}
 			}
 			log.Printf("Disk `%s` will be Attached", disk.ID)
+
 			if err = vm.AttachDisk(disk); err != nil {
-				diagErr = diag.Errorf("ERROR. Cannot attach disk `%s`: %s", disk.ID, err)
-				return
+				return diag.Errorf("ERROR. Cannot attach disk `%s`: %s", disk.ID, err)
 			}
+
 			needReload = true
 		}
 	}
@@ -529,16 +552,16 @@ func attachNewDisk(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) dia
 		}
 	}
 
-	return
+	return nil
 }
 
-func detachOldDisk(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) (diagErr diag.Diagnostics) {
+func detachOldDisk(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) diag.Diagnostics {
 	disksIds := d.Get("disks").(*schema.Set).List()
 	systemDiskResource := d.Get("system_disk.0")
 	systemDisk := systemDiskResource.(map[string]interface{})["id"].(string)
 	var needReload bool
 	disksIds = append(disksIds, systemDisk)
-	vm_id := vm.ID
+	vmId := vm.ID
 
 	for _, disk := range vm.Disks {
 		found := false
@@ -552,13 +575,17 @@ func detachOldDisk(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) (di
 		if !found {
 			disk, err := manager.GetDisk(disk.ID)
 			if err != nil {
-				diagErr = diag.FromErr(err)
-				return
+				return diag.FromErr(err)
 			}
-			if disk.Vm != nil && disk.Vm.ID == vm_id {
+
+			if disk.Vm != nil && disk.Vm.ID == vmId {
 				log.Printf("Disk %s found on vm and not mentioned in the state."+
 					" Disk will be detached", disk.ID)
-				vm.DetachDisk(disk)
+
+				if err = vm.DetachDisk(disk); err != nil {
+					return diag.FromErr(err)
+				}
+
 				needReload = true
 			}
 		}
@@ -570,5 +597,5 @@ func detachOldDisk(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) (di
 		}
 	}
 
-	return
+	return nil
 }

@@ -2,6 +2,7 @@ package bcc_terraform
 
 import (
 	"context"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
@@ -94,11 +95,12 @@ func Provider() *schema.Provider {
 		},
 
 		ResourcesMap: map[string]*schema.Resource{
-			"basis_project":                resourceProject(),          // 001-resource-create-project +
-			"basis_vdc":                    resourceVdc(),              // 006-resource-create-vdc +
-			"basis_network":                resourceNetwork(),          // 009-resource-create-network +
-			"basis_disk":                   resourceDisk(),             // 014-resource-create-disk +
-			"basis_vm":                     resourceVm(),               // 021-resource-create-vm +
+			"basis_project":                resourceProject(), // 001-resource-create-project +
+			"basis_vdc":                    resourceVdc(),     // 006-resource-create-vdc +
+			"basis_network":                resourceNetwork(), // 009-resource-create-network +
+			"basis_disk":                   resourceDisk(),    // 014-resource-create-disk +
+			"basis_vm":                     resourceVm(),      // 021-resource-create-vm +
+			"basis_affinity_group":         resourceAffinityGroup(),
 			"basis_firewall_template":      resourceFirewallTemplate(), // 024-resource-create-firewall-template +
 			"basis_router":                 resourceRouter(),           // 027-resource-create-router +
 			"basis_port":                   resourcePort(),             // 027-resource-create-port +

@@ -80,14 +80,21 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		floatingIp = &floatingIpStr
 	}
 
-	newVm := bcc.NewVm(vmName, cpu, ram, template, nil, &userData, ports, systemDiskList, floatingIp, hotAdd)
-	newVm.Tags = unmarshalTagNames(d.Get("tags"))
-
-	err = targetVdc.CreateVm(&newVm)
-	if err != nil {
-		return diag.Errorf("Error creating vm: %s", err)
+	var affGrs []string
+	for _, item := range d.Get("affinity_groups").([]interface{}) {
+		affGrs = append(affGrs, item.(string))
 	}
 
+	newVm := bcc.NewVm(
+		vmName, cpu, ram, template, nil, platform,
+		&userData, ports, systemDiskList, floatingIp, hotAdd,
+	)
+	newVm.Tags = unmarshalTagNames(d.Get("tags"))
+	newVm.AffinityGroupsId = affGrs
+
+	if err = targetVdc.CreateVm(&newVm); err != nil {
+		return diag.Errorf("Error creating vm: %s", err)
+	}
 	if err = newVm.WaitLock(); err != nil {
 		return diag.FromErr(err)
 	}
@@ -173,7 +180,12 @@ func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{
 	if vm.Floating != nil {
 		d.Set("floating_ip", vm.Floating.IpAddress)
 	}
-	d.Set("tags", marshalTagNames(vm.Tags))
+
+	affGrs := make([]string, len(vm.AffinityGroups))
+	for idx, item := range vm.AffinityGroups {
+		affGrs[idx] = item.ID
+	}
+	d.Set("affinity_groups", affGrs)
 
 	return nil
 }
@@ -226,6 +238,15 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 	if d.HasChange("tags") {
 		needUpdate = true
 		vm.Tags = unmarshalTagNames(d.Get("tags"))
+	}
+
+	if d.HasChange("affinity_groups") {
+		needUpdate = true
+		var affGrs []string
+		for _, item := range d.Get("affinity_groups").([]interface{}) {
+			affGrs = append(affGrs, item.(string))
+		}
+		vm.AffinityGroupsId = affGrs
 	}
 
 	if needUpdate {

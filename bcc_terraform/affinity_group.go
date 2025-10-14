@@ -50,7 +50,7 @@ func (args *Arguments) injectCreateAffinityGroup() {
 		"vms": {
 			Type:        schema.TypeList,
 			Optional:    true,
-			Default:     make(map[string]interface{}),
+			Computed:    true,
 			Description: "List of VMs",
 			Elem: &schema.Resource{
 				Schema: map[string]*schema.Schema{

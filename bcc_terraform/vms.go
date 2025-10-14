@@ -144,6 +144,15 @@ func (args *Arguments) injectCreateVm() {
 			Default:     false,
 			Description: "Enabling resources hot swap for vm",
 		},
+		"affinity_groups": {
+			Type:        schema.TypeList,
+			Optional:    true,
+			Computed:    true,
+			MinItems:    1,
+			MaxItems:    10,
+			Description: "List of Affinity Groups connected to the Vm",
+			Elem:        &schema.Schema{Type: schema.TypeString},
+		},
 	})
 }
 

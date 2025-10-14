@@ -74,45 +74,45 @@ func Provider() *schema.Provider {
 			"basis_firewall_templates":   dataSourceFirewallTemplates(),   // 020-data-get-templates +
 			"basis_vm":                   dataSourceVm(),                  // 022-data-get-vm
 			"basis_vms":                  dataSourceVms(),                 // 023-data-get-vms
-			"basis_router":               dataSourceRouter(),              // 025-data-get-router +
-			"basis_routers":              dataSourceRouters(),             // 026-data-get-routers +
-			"basis_port":                 dataSourcePort(),                // 027-data-get-port +
+			"basis_router":               dataSourceRouter(),              // 024-data-get-router +
+			"basis_routers":              dataSourceRouters(),             // 025-data-get-routers +
+			"basis_port":                 dataSourcePort(),                // 026-data-get-port +
 			"basis_ports":                dataSourcePorts(),               // 027-data-get-ports +
 			"basis_dns":                  dataSourceDns(),                 // 028-data-get-dns +
-			"basis_dnss":                 dataSourceDnss(),                // 028-data-get-dnss +
-			"basis_lbaas":                dataSourceLbaas(),               // 028-data-get-lbaas +
-			"basis_lbaass":               dataSourceLoadBalancers(),       // 028-data-get-lbaass +
-			"basis_s3_storage":           dataSourceS3Storage(),           // 028-data-get-s3-storage +
-			"basis_s3_storages":          dataSourceS3Storages(),          // 028-data-get-s3-storages +
-			"basis_kubernetes":           dataSourceKubernetes(),          // 030-resource-get-kubernetes +
-			"basis_kubernetess":          dataSourceKubernetess(),         // 030-resource-get-kubernetess +
-			"basis_kubernetes_template":  dataSourceKubernetesTemplate(),  // 030-resource-get-kubernetes_template +
-			"basis_kubernetes_templates": dataSourceKubernetesTemplates(), // 030-resource-get-kubernetes_templates +
-			"basis_pub_key":              dataSourcePublicKey(),           // 030-resource-get-pub-key +
-			"basis_platform":             dataSourcePlatform(),            // 030-resource-get-platform +
-			"basis_platforms":            dataSourcePlatforms(),           // 030-resource-get-platforms +
-			"basis_paas_template":        dataSourcePaasTemplate(),
+			"basis_dnss":                 dataSourceDnss(),                // 029-data-get-dnss +
+			"basis_lbaas":                dataSourceLbaas(),               // 030-data-get-lbaas +
+			"basis_lbaass":               dataSourceLoadBalancers(),       // 031-data-get-lbaass +
+			"basis_s3_storage":           dataSourceS3Storage(),           // 032-data-get-s3-storage +
+			"basis_s3_storages":          dataSourceS3Storages(),          // 033-data-get-s3-storages +
+			"basis_kubernetes":           dataSourceKubernetes(),          // 034-data-get-kubernetes +
+			"basis_kubernetess":          dataSourceKubernetess(),         // 035-data-get-kubernetess +
+			"basis_kubernetes_template":  dataSourceKubernetesTemplate(),  // 036-data-get-kubernetes_template +
+			"basis_kubernetes_templates": dataSourceKubernetesTemplates(), // 037-data-get-kubernetes_templates +
+			"basis_pub_key":              dataSourcePublicKey(),           // 038-data-get-pub-key +
+			"basis_platform":             dataSourcePlatform(),            // 039-data-get-platform +
+			"basis_platforms":            dataSourcePlatforms(),           // 040-data-get-platforms +
+			"basis_paas_template":        dataSourcePaasTemplate(),        // 041-data-get-paas-template +
 		},
 
 		ResourcesMap: map[string]*schema.Resource{
-			"basis_project":                resourceProject(), // 001-resource-create-project +
-			"basis_vdc":                    resourceVdc(),     // 006-resource-create-vdc +
-			"basis_network":                resourceNetwork(), // 009-resource-create-network +
-			"basis_disk":                   resourceDisk(),    // 014-resource-create-disk +
-			"basis_vm":                     resourceVm(),      // 021-resource-create-vm +
-			"basis_affinity_group":         resourceAffinityGroup(),
-			"basis_firewall_template":      resourceFirewallTemplate(), // 024-resource-create-firewall-template +
-			"basis_router":                 resourceRouter(),           // 027-resource-create-router +
-			"basis_port":                   resourcePort(),             // 027-resource-create-port +
-			"basis_dns":                    resourceDns(),              // 028-resource-create-dns +
-			"basis_dns_record":             resourceDnsRecord(),        // 028-resource-create-dns-record +
-			"basis_firewall_template_rule": resourceFirewallRule(),     // 029-resource-create-firewall-rule +
-			"basis_lbaas":                  resourceLbaas(),            // 029-resource-create-lbaas +
-			"basis_lbaas_pool":             resourceLbaasPool(),        // 029-resource-create-lbaas-pool +
-			"basis_s3_storage":             resourceS3Storage(),        // 029-resource-create-s3-storage +
-			"basis_s3_storage_bucket":      resourceS3StorageBucket(),  // 029-resource-create-s3-storage-bucket +
-			"basis_kubernetes":             resourceKubernetes(),       // 030-resource-create-basis-kubernetes +
-			"basis_paas_service":           resourcePaasService(),
+			"basis_project":                resourceProject(),          // 001-resource-create-project +
+			"basis_vdc":                    resourceVdc(),              // 006-resource-create-vdc +
+			"basis_network":                resourceNetwork(),          // 009-resource-create-network +
+			"basis_disk":                   resourceDisk(),             // 014-resource-create-disk +
+			"basis_vm":                     resourceVm(),               // 021-resource-create-vm +
+			"basis_affinity_group":         resourceAffinityGroup(),    // 042-resource-create-affinity-group
+			"basis_firewall_template":      resourceFirewallTemplate(), // 043-resource-create-firewall-template +
+			"basis_router":                 resourceRouter(),           // 044-resource-create-router +
+			"basis_port":                   resourcePort(),             // 045-resource-create-port +
+			"basis_dns":                    resourceDns(),              // 046-resource-create-dns +
+			"basis_dns_record":             resourceDnsRecord(),        // 047-resource-create-dns-record +
+			"basis_firewall_template_rule": resourceFirewallRule(),     // 048-resource-create-firewall-rule +
+			"basis_lbaas":                  resourceLbaas(),            // 049-resource-create-lbaas +
+			"basis_lbaas_pool":             resourceLbaasPool(),        // 050-resource-create-lbaas-pool +
+			"basis_s3_storage":             resourceS3Storage(),        // 051-resource-create-s3-storage +
+			"basis_s3_storage_bucket":      resourceS3StorageBucket(),  // 052-resource-create-s3-storage-bucket +
+			"basis_kubernetes":             resourceKubernetes(),       // 053-resource-create-basis-kubernetes +
+			"basis_paas_service":           resourcePaasService(),      // 054-resource-create-paas-service
 		},
 	}
 

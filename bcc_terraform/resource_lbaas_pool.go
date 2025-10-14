@@ -147,7 +147,8 @@ func resourceLbaasPoolUpdate(ctx context.Context, d *schema.ResourceData, meta i
 		pool.Protocol = d.Get("protocol").(string)
 	}
 	if d.HasChange("session_persistence") {
-		pool.SessionPersistence = d.Get("session_persistence").(*string)
+		sessionPersistence := d.Get("session_persistence").(string)
+		pool.SessionPersistence = &sessionPersistence
 	}
 	if d.HasChange("member") {
 		membersCount := d.Get("member.#").(int)

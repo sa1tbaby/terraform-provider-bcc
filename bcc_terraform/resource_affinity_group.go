@@ -49,9 +49,15 @@ func resourceAffinityGroupCreate(ctx context.Context, d *schema.ResourceData, me
 	log.Printf(name, description, policy, reboot)
 
 	var vms []*bcc.MetaData
-	for _, vm := range d.Get("vms").([]interface{}) {
-		vmMap := vm.(map[string]interface{})
-		vms = append(vms, &bcc.MetaData{ID: vmMap["id"].(string), Name: vmMap["name"].(string)})
+	if _, ok := d.GetOk("vms"); ok {
+		for _, vm := range d.Get("vms").([]interface{}) {
+			vmMap := vm.(map[string]interface{})
+			vms = append(vms, &bcc.MetaData{ID: vmMap["id"].(string), Name: vmMap["name"].(string)})
+		}
+	} else {
+		if err = d.Set("vms", make(map[string]interface{})); err != nil {
+			return diag.Errorf("error setting vms: %s", err)
+		}
 	}
 
 	newAffGp := bcc.NewAffinityGroup(name, description, policy, vms)

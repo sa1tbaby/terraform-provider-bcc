@@ -211,14 +211,27 @@ func (args *Arguments) injectResultVm() {
 		},
 		"ports": {
 			Type:        schema.TypeList,
+			Optional:    true,
 			Computed:    true,
+			MinItems:    1,
+			MaxItems:    10,
+			Description: "List of Ports connected to the Vm",
+			Deprecated:  "Use networks instead of ports",
+			Elem:        &schema.Schema{Type: schema.TypeString},
+		},
+		"networks": {
+			Type:        schema.TypeList,
+			Optional:    true,
+			Computed:    true,
+			MinItems:    1,
+			MaxItems:    10,
 			Description: "List of Ports connected to the Vm",
 			Elem: &schema.Resource{
 				Schema: map[string]*schema.Schema{
 					"id": {
 						Type:        schema.TypeString,
-						Computed:    true,
-						Description: "Id of the Port",
+						Required:    true,
+						Description: "Id of the network",
 					},
 					"ip_address": {
 						Type:        schema.TypeString,

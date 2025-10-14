@@ -347,12 +347,31 @@ func syncNetworks(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) (err
 		return nil
 	}
 
-	oldNetworks, newNetworks := d.GetChange(targetDefinition)
 	olfFloating, newFloating := d.GetChange("floating")
+	oldNetworksRaw, newNetworksRaw := d.GetChange(targetDefinition)
+	oldNetworks := make([]string, len(oldNetworksRaw.([]interface{})))
+	newNetworks := make([]string, len(newNetworksRaw.([]interface{})))
+	if targetDefinition == "ports" {
+		for idx, item := range newNetworksRaw.([]interface{}) {
+			newNetworks[idx] = item.(string)
+		}
+		for idx, item := range oldNetworksRaw.([]interface{}) {
+			oldNetworks[idx] = item.(string)
+		}
+	} else {
+		for idx, item := range newNetworksRaw.([]interface{}) {
+			_item := item.(map[string]interface{})
+			newNetworks[idx] = _item["id"].(string)
+		}
+		for idx, item := range oldNetworksRaw.([]interface{}) {
+			_item := item.(map[string]interface{})
+			oldNetworks[idx] = _item["id"].(string)
+		}
+	}
 
 	newNetworksSet := make(map[string]bool)
-	for _, item := range newNetworks.([]interface{}) {
-		newNetworksSet[item.(string)] = true
+	for _, item := range newNetworks {
+		newNetworksSet[item] = true
 	}
 
 	if len(newNetworksSet) == 0 && newFloating.(bool) {
@@ -361,17 +380,19 @@ func syncNetworks(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) (err
 
 	if olfFloating.(bool) && !newFloating.(bool) {
 		vm.Floating = &bcc.Port{IpAddress: nil}
-		d.Set("floating", vm.Floating != nil)
+		if err := d.Set("floating", vm.Floating != nil); err != nil {
+			return diag.Errorf("Error setting floating: %s", err)
+		}
 		if err := repeatOnError(vm.Update, vm); err != nil {
 			return diag.Errorf("Error with deletting floating for vm: %s", err)
 		}
 	}
 
-	for _, item := range oldNetworks.([]interface{}) {
-		if newNetworksSet[item.(string)] {
-			delete(newNetworksSet, item.(string))
+	for _, item := range oldNetworks {
+		if newNetworksSet[item] {
+			delete(newNetworksSet, item)
 		} else {
-			if err = DisconnectOldPort(item.(string), manager, vm); err != nil {
+			if err = DisconnectOldPort(item, manager, vm); err != nil {
 				log.Printf("Error disconnecting new port: %v", err)
 				return err
 			}
@@ -387,7 +408,9 @@ func syncNetworks(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) (err
 
 	if newFloating.(bool) {
 		vm.Floating = &bcc.Port{ID: "RANDOM_FIP"}
-		d.Set("floating", vm.Floating != nil)
+		if err := d.Set("floating", vm.Floating != nil); err != nil {
+			return diag.Errorf("Error setting floating: %s", err)
+		}
 		if err := repeatOnError(vm.Update, vm); err != nil {
 			return diag.Errorf("Error with adding floating for vm: %s", err)
 		}

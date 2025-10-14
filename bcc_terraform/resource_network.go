@@ -23,6 +23,17 @@ func resourceNetwork() *schema.Resource {
 			StateContext: schema.ImportStatePassthroughContext,
 		},
 		Schema: args,
+		CustomizeDiff: func(ctx context.Context, d *schema.ResourceDiff, m interface{}) error {
+			if d.Id() != "" {
+				if d.HasChange("subnets.0.cidr") {
+					oldNet, newNet := d.GetChange("subnets.0.cidr")
+					if oldNet.(string) != newNet.(string) {
+						return fmt.Errorf("changing 'cidr' attribute is not supported")
+					}
+				}
+			}
+			return nil
+		},
 	}
 }
 
@@ -42,17 +53,22 @@ func resourceNetworkCreate(ctx context.Context, d *schema.ResourceData, meta int
 	} else {
 		network.Mtu = nil
 	}
-	targetVdc.WaitLock()
+
+	if err = targetVdc.WaitLock(); err != nil {
+		return diag.Errorf("vdc_id: Error locking VDC: %s", err)
+	}
 	if err = targetVdc.CreateNetwork(&network); err != nil {
 		return diag.Errorf("Error creating network: %s", err)
 	}
+
 	d.SetId(network.ID)
 
-	diag := createSubnet(d, manager)
-	if diag != nil {
-		return diag
+	if err := createSubnet(d, manager); err != nil {
+		return diag.Errorf("Error creating subnet: %v", err)
 	}
-	network.WaitLock()
+	if err := network.WaitLock(); err != nil {
+		return diag.Errorf("Error waiting for network to become available: %s", err)
+	}
 
 	log.Printf("[INFO] Network created, ID: %s", d.Id())
 
@@ -71,9 +87,15 @@ func resourceNetworkRead(ctx context.Context, d *schema.ResourceData, meta inter
 		}
 	}
 
-	d.Set("name", network.Name)
-	d.Set("tags", marshalTagNames(network.Tags))
-	d.Set("mtu", network.Mtu)
+	if err = d.Set("name", network.Name); err != nil {
+		return diag.Errorf("error setting name: id=%s err=%s", network.ID, err)
+	}
+	if err = d.Set("tags", marshalTagNames(network.Tags)); err != nil {
+		return diag.Errorf("error setting tags: id=%s err=%s", network.ID, err)
+	}
+	if err = d.Set("mtu", network.Mtu); err != nil {
+		return diag.Errorf("error setting mtu: id=%s err=%s", network.ID, err)
+	}
 
 	subnets, err := network.GetSubnets()
 	if err != nil {
@@ -105,6 +127,7 @@ func resourceNetworkRead(ctx context.Context, d *schema.ResourceData, meta inter
 }
 
 func resourceNetworkUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+
 	manager := meta.(*CombinedConfig).Manager()
 
 	network, err := manager.GetNetwork(d.Id())
@@ -112,6 +135,7 @@ func resourceNetworkUpdate(ctx context.Context, d *schema.ResourceData, meta int
 		return diag.Errorf("id: Error getting network: %s", err)
 	}
 	shouldUpdate := false
+
 	if d.HasChange("tags") {
 		network.Tags = unmarshalTagNames(d.Get("tags"))
 		shouldUpdate = true
@@ -143,7 +167,9 @@ func resourceNetworkUpdate(ctx context.Context, d *schema.ResourceData, meta int
 			return diagErr
 		}
 	}
-	network.WaitLock()
+	if err := network.WaitLock(); err != nil {
+		return diag.Errorf("Error waiting for network to become available: %s", err)
+	}
 
 	return resourceNetworkRead(ctx, d, meta)
 }
@@ -159,7 +185,9 @@ func resourceNetworkDelete(ctx context.Context, d *schema.ResourceData, meta int
 	if err = repeatOnError(network.Delete, network); err != nil {
 		return diag.Errorf("Error deleting network: %s", err)
 	}
-	network.WaitLock()
+	if err := network.WaitLock(); err != nil {
+		return diag.Errorf("Error waiting for network to become available: %s", err)
+	}
 
 	return nil
 }
@@ -206,6 +234,7 @@ func updateSubnet(d *schema.ResourceData, manager *bcc.Manager) (diagErr diag.Di
 	if err != nil {
 		return diag.Errorf("id: Unable to get network: %s", err)
 	}
+
 	subnetsRaw, err := network.GetSubnets()
 	if err != nil {
 		return diag.Errorf("subnets: Unable to get subnets: %s", err)
@@ -232,7 +261,7 @@ func updateSubnet(d *schema.ResourceData, manager *bcc.Manager) (diagErr diag.Di
 			if err := network.CreateSubnet(&newSubnet); err != nil {
 				return diag.Errorf("subnets: Error creating subnet: %s", err)
 			}
-			if err := subnet.UpdateDNSServers(newDnsServers); err != nil {
+			if err := newSubnet.UpdateDNSServers(newDnsServers); err != nil {
 				return diag.Errorf("dns: Error Update DNS Servers: %s", err)
 			}
 		} else {

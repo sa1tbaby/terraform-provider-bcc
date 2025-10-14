@@ -2,6 +2,7 @@ package bcc_terraform
 
 import (
 	"context"
+	"fmt"
 	"log"
 
 	"github.com/basis-cloud/bcc-go/bcc"

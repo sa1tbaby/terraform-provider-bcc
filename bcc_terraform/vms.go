@@ -49,6 +49,12 @@ func (args *Arguments) injectCreateVm() {
 			),
 			Description: "name of the Vm",
 		},
+		"platform": {
+			Type:        schema.TypeString,
+			Optional:    true,
+			ForceNew:    true,
+			Description: "platform of the Vm",
+		},
 		"cpu": {
 			Type:         schema.TypeInt,
 			Required:     true,
@@ -62,8 +68,7 @@ func (args *Arguments) injectCreateVm() {
 		},
 		"template_id": {
 			Type:        schema.TypeString,
-			Optional:    true,
-			ForceNew:    true,
+			Required:    true,
 			Description: "id of the Template",
 		},
 		"user_data": {
@@ -249,6 +254,21 @@ func (args *Arguments) injectSystemDisk() {
 			Type:        schema.TypeString,
 			Computed:    true,
 			Description: "external id of the volume. It can be empty",
+		},
+	})
+}
+
+func (args *Arguments) injectResultListVm() {
+	s := Defaults()
+	s.injectResultVm()
+
+	args.merge(Arguments{
+		"vms": {
+			Type:     schema.TypeList,
+			Computed: true,
+			Elem: &schema.Resource{
+				Schema: s,
+			},
 		},
 	})
 }

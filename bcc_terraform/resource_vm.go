@@ -14,7 +14,6 @@ func resourceVm() *schema.Resource {
 	args := Defaults()
 	args.injectCreateVm()
 	args.injectContextVdcById()
-	args.injectContextTemplateById() // override template_id
 
 	return &schema.Resource{
 		CreateContext: resourceVmCreate,
@@ -34,6 +33,7 @@ func resourceVm() *schema.Resource {
 
 func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
+
 	targetVdc, err := GetVdcById(d, manager)
 	if err != nil {
 		return diag.Errorf("vdc_id: Error getting VDC: %s", err)
@@ -49,13 +49,13 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 	ram := d.Get("ram").(float64)
 	userData := d.Get("user_data").(string)
 	hotAdd := d.Get("hot_add").(bool)
-	log.Printf(vmName, cpu, ram, userData, template.Name)
+	platform := d.Get("platform").(string)
+	log.Printf(vmName, cpu, ram, userData, template.Name, platform)
 
 	// System disk creation
 	systemDiskArgs := d.Get("system_disk.0").(map[string]interface{})
 	diskSize := systemDiskArgs["size"].(int)
 	storageProfileId := systemDiskArgs["storage_profile_id"].(string)
-
 	storageProfile, err := targetVdc.GetStorageProfile(storageProfileId)
 	if err != nil {
 		return diag.Errorf("storage_profile_id: Error storage profile %s not found", storageProfileId)
@@ -74,6 +74,7 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		}
 		ports[i] = port
 	}
+
 	var floatingIp *string = nil
 	if d.Get("floating").(bool) {
 		floatingIpStr := "RANDOM_FIP"
@@ -143,6 +144,8 @@ func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{
 	d.Set("template_id", vm.Template.ID)
 	d.Set("power", vm.Power)
 	d.Set("hot_add", vm.HotAdd)
+	d.Set("platform", vm.Platform)
+	d.Set("tags", marshalTagNames(vm.Tags))
 
 	flattenDisks := make([]string, len(vm.Disks)-1)
 	for i, disk := range vm.Disks {
@@ -174,9 +177,9 @@ func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{
 	}
 	d.Set("ports", flattenPorts)
 	d.Set("networks", flattenNetworks)
-
 	d.Set("floating", vm.Floating != nil)
 	d.Set("floating_ip", "")
+
 	if vm.Floating != nil {
 		d.Set("floating_ip", vm.Floating.IpAddress)
 	}

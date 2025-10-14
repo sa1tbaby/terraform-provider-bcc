@@ -40,46 +40,52 @@ func resourceVdc() *schema.Resource {
 
 func resourceVdcCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
+
 	targetProject, err := manager.GetProject(d.Get("project_id").(string))
 	if err != nil {
-		return diag.Errorf("project_id: Error getting project: %s", err)
+		return diag.Errorf("[ERROR-006] project_id: Error getting project: %s", err)
 	}
 
 	targetHypervisor, err := GetHypervisorById(d, manager, targetProject)
 	if err != nil {
-		return diag.Errorf("hypervisor_id: Error getting Hypervisor: %s", err)
+		return diag.Errorf("[ERROR-006] hypervisor_id: Error getting Hypervisor: %s", err)
 	}
 
 	vdc := bcc.NewVdc(d.Get("name").(string), targetHypervisor)
 	vdc.Tags = unmarshalTagNames(d.Get("tags"))
+
 	// if we creating multiple vdc at once, there are need some time to get new vnid
 	f := func() error { return targetProject.CreateVdc(&vdc) }
 	err = repeatOnError(f, targetProject)
 
 	if err != nil {
-		return diag.Errorf("Error creating vdc: %s", err)
+		return diag.Errorf("[ERROR-006] Error creating vdc: %s", err)
 	}
 
-	vdc.WaitLock()
+	if err = vdc.WaitLock(); err != nil {
+		return diag.Errorf("[ERROR-006] Error waiting for vdc to become available: %s", err)
+	}
+
 	if mtu, ok := d.GetOk("default_network_mtu"); ok {
 		networks, err := vdc.GetNetworks(bcc.Arguments{"defaults_only": "true"})
 		if err != nil {
-			return diag.Errorf("Error getting vdc networks: %s", err)
+			return diag.Errorf("[ERROR-006] Error getting vdc networks: %s", err)
 		}
 		if len(networks) != 1 {
-			return diag.Errorf("Expected 1 network, got %d networks", len(networks))
+			return diag.Errorf("[ERROR-006] Expected 1 network, got %d networks", len(networks))
 		}
 		network := networks[0]
 		mtuValue := mtu.(int)
 		network.Mtu = &mtuValue
 		err = network.Update()
 		if err != nil {
-			return diag.Errorf("Error updating vdc default network: %s", err)
+			return diag.Errorf("[ERROR-006] Error updating vdc default network: %s", err)
 		}
 	}
-	vdc.GetNetworks()
+
+	//vdc.GetNetworks()
 	d.SetId(vdc.ID)
-	log.Printf("[INFO] VDC created, ID: %s", d.Id())
+	log.Printf("[INFO-006] VDC created, ID: %s", d.Id())
 
 	return resourceVdcRead(ctx, d, meta)
 }
@@ -92,20 +98,20 @@ func resourceVdcRead(ctx context.Context, d *schema.ResourceData, meta interface
 			d.SetId("")
 			return nil
 		} else {
-			return diag.Errorf("id: Error getting vdc: %s", err)
+			return diag.Errorf("[ERROR-006] id: Error getting vdc: %s", err)
 		}
 	}
 	networks, err := vdc.GetNetworks(bcc.Arguments{"defaults_only": "true"})
 	if err != nil {
-		return diag.Errorf("error getting default network: %s", err)
+		return diag.Errorf("[ERROR-006] error getting default network: %s", err)
 	}
 	if len(networks) != 1 {
-		return diag.Errorf("expected 1 default network, receive %d default networks", len(networks))
+		return diag.Errorf("[ERROR-006] expected 1 default network, receive %d default networks", len(networks))
 	}
 	network := networks[0]
 	subnets, err := network.GetSubnets()
 	if err != nil {
-		return diag.Errorf("subnets: Error getting subnets: %s", err)
+		return diag.Errorf("[ERROR-006] subnets: Error getting subnets: %s", err)
 	}
 
 	flattenedSubnets := make([]map[string]interface{}, len(subnets))
@@ -147,10 +153,10 @@ func resourceVdcUpdate(ctx context.Context, d *schema.ResourceData, meta interfa
 
 	vdc, err := manager.GetVdc(d.Id())
 	if err != nil {
-		return diag.Errorf("id: Error getting vdc: %s", err)
+		return diag.Errorf("[ERROR-006] id: Error getting vdc: %s", err)
 	}
 	if d.HasChange("hypervisor_id") {
-		return diag.Errorf("hypervisor_id: you can`t change hypervisor type on created vdc")
+		return diag.Errorf("[ERROR-006] hypervisor_id: you can`t change hypervisor type on created vdc")
 	}
 	if d.HasChange("name") {
 		vdc.Name = d.Get("name").(string)
@@ -160,15 +166,15 @@ func resourceVdcUpdate(ctx context.Context, d *schema.ResourceData, meta interfa
 	}
 	err = vdc.Update()
 	if err != nil {
-		return diag.Errorf("name: Error rename vdc: %s", err)
+		return diag.Errorf("[ERROR-006] name: Error rename vdc: %s", err)
 	}
 	if d.HasChange("default_network_mtu") {
 		networks, err := vdc.GetNetworks(bcc.Arguments{"defaults_only": "true"})
 		if err != nil {
-			return diag.Errorf("Error getting vdc networks: %s", err)
+			return diag.Errorf("[ERROR-006] Error getting vdc networks: %s", err)
 		}
 		if len(networks) != 1 {
-			return diag.Errorf("Expected 1 network, got %d networks", len(networks))
+			return diag.Errorf("[ERROR-006] Expected 1 network, got %d networks", len(networks))
 		}
 		network := networks[0]
 
@@ -180,11 +186,13 @@ func resourceVdcUpdate(ctx context.Context, d *schema.ResourceData, meta interfa
 		}
 		err = network.Update()
 		if err != nil {
-			return diag.Errorf("Error updating vdc default network: %s", err)
+			return diag.Errorf("[ERROR-006] Error updating vdc default network: %s", err)
 		}
 	}
 
-	vdc.WaitLock()
+	if err = vdc.WaitLock(); err != nil {
+		return diag.Errorf("[ERROR-006] Error locking vdc: %s", err)
+	}
 
 	return resourceVdcRead(ctx, d, meta)
 }
@@ -193,14 +201,17 @@ func resourceVdcDelete(ctx context.Context, d *schema.ResourceData, meta interfa
 	manager := meta.(*CombinedConfig).Manager()
 	vdc, err := manager.GetVdc(d.Id())
 	if err != nil {
-		return diag.Errorf("id: Error getting vdc: %s", err)
+		return diag.Errorf("[ERROR-006] id: Error getting vdc: %s", err)
 	}
 
 	err = vdc.Delete()
 	if err != nil {
-		return diag.Errorf("Error deleting vdc: %s", err)
+		return diag.Errorf("[ERROR-006] Error deleting vdc: %s", err)
 	}
-	vdc.WaitLock()
+
+	if err = vdc.WaitLock(); err != nil {
+		return diag.Errorf("[ERROR-006] Error locking vdc: %s", err)
+	}
 
 	return nil
 }

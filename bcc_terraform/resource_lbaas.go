@@ -57,7 +57,7 @@ func resourceLbaasCreate(ctx context.Context, d *schema.ResourceData, meta inter
 	newLbaas := bcc.NewLoadBalancer(d.Get("name").(string), vdc, &port, floatingIp)
 	newLbaas.Tags = unmarshalTagNames(d.Get("tags"))
 
-	err = vdc.Create(&newLbaas)
+	err = vdc.CreateLoadBalancer(&newLbaas)
 	if err != nil {
 		return diag.Errorf("Error creating Lbaas: %s", err)
 	}

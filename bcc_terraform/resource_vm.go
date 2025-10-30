@@ -333,13 +333,22 @@ func syncVmNetworks(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) (e
 	} else if d.HasChange("ports") {
 		targetDefinition = "ports"
 	} else {
-		return nil
+		if _, ok := d.GetOk("networks"); ok {
+			targetDefinition = "networks"
+		} else if _, ok := d.GetOk("ports"); ok {
+			targetDefinition = "ports"
+		} else {
+			return nil
+		}
 	}
 
-	olfFloating, newFloating := d.GetChange("floating")
 	oldNetworksRaw, newNetworksRaw := d.GetChange(targetDefinition)
+	olfFloating, newFloating := d.GetChange("floating")
+
+	newNetworksSet := make(map[string]bool)
 	oldNetworks := make([]string, len(oldNetworksRaw.([]interface{})))
 	newNetworks := make([]string, len(newNetworksRaw.([]interface{})))
+
 	if targetDefinition == "ports" {
 		for idx, item := range newNetworksRaw.([]interface{}) {
 			newNetworks[idx] = item.(string)
@@ -347,7 +356,7 @@ func syncVmNetworks(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) (e
 		for idx, item := range oldNetworksRaw.([]interface{}) {
 			oldNetworks[idx] = item.(string)
 		}
-	} else {
+	} else if targetDefinition == "networks" {
 		for idx, item := range newNetworksRaw.([]interface{}) {
 			_item := item.(map[string]interface{})
 			newNetworks[idx] = _item["id"].(string)
@@ -358,11 +367,9 @@ func syncVmNetworks(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) (e
 		}
 	}
 
-	newNetworksSet := make(map[string]bool)
 	for _, item := range newNetworks {
 		newNetworksSet[item] = true
 	}
-
 	if len(newNetworksSet) == 0 && newFloating.(bool) {
 		return diag.Errorf("floating cannot be added without existing networks")
 	}

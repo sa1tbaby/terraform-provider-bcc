@@ -81,17 +81,12 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		floatingIp = &floatingIpStr
 	}
 
-	var affGrs []string
-	for _, item := range d.Get("affinity_groups").([]interface{}) {
-		affGrs = append(affGrs, item.(string))
-	}
-
 	newVm := bcc.NewVm(
 		vmName, cpu, ram, template, nil, platform,
 		&userData, ports, systemDiskList, floatingIp, hotAdd,
 	)
 	newVm.Tags = unmarshalTagNames(d.Get("tags"))
-	newVm.AffinityGroupsId = affGrs
+	newVm.AffinityGroups = d.Get("affinity_groups")
 
 	if err = targetVdc.CreateVm(&newVm); err != nil {
 		return diag.Errorf("Error creating vm: %s", err)
@@ -245,11 +240,7 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 
 	if d.HasChange("affinity_groups") {
 		needUpdate = true
-		var affGrs []string
-		for _, item := range d.Get("affinity_groups").([]interface{}) {
-			affGrs = append(affGrs, item.(string))
-		}
-		vm.AffinityGroupsId = affGrs
+		vm.AffinityGroups = d.Get("affinity_groups")
 	}
 
 	if needUpdate {

@@ -149,14 +149,14 @@ func resourceKubernetesUpdate(ctx context.Context, d *schema.ResourceData, meta 
 	manager := meta.(*CombinedConfig).Manager()
 	targetVdc, err := GetVdcById(d, manager)
 	if err != nil {
-		return diag.Errorf("vdc_id: Error getting VDC: %s", err)
+		return diag.Errorf("[ERROR-053]: err with getting 'VDC': %s ", err)
 	}
 
 	needUpdate := false
 
 	kubernetes, err := manager.GetKubernetes(d.Id())
 	if err != nil {
-		return diag.Errorf("id: Error getting Kubernetes: %s", err)
+		return diag.Errorf("[ERROR-053]: err with getting kubernetes 'id': %s", err)
 	}
 
 	// Detect Kubernetes changes
@@ -172,13 +172,13 @@ func resourceKubernetesUpdate(ctx context.Context, d *schema.ResourceData, meta 
 	sp_id := d.Get("node_storage_profile_id").(string)
 	storage_profile, err := targetVdc.GetStorageProfile(sp_id)
 	if err != nil {
-		return diag.Errorf("storage_profile_id: Error storage profile %s not found", sp_id)
+		return diag.Errorf("[ERROR-053]: err with getting 'storage_profile_id': %s ", sp_id)
 	}
 
 	userPublicKey := d.Get("user_public_key_id").(string)
 	pub_key, err := manager.GetPublicKey(userPublicKey)
 	if err != nil {
-		return diag.Errorf("storage_profile_id: Error storage profile %s not found", userPublicKey)
+		return diag.Errorf("[ERROR-053]: err with getting 'userPublicKey': %s ", userPublicKey)
 	}
 	kubernetes.NodeRam = d.Get("node_ram").(int)
 	kubernetes.NodeCpu = d.Get("node_cpu").(int)
@@ -186,6 +186,9 @@ func resourceKubernetesUpdate(ctx context.Context, d *schema.ResourceData, meta 
 	kubernetes.NodeStorageProfile = storage_profile
 	kubernetes.NodeDiskSize = d.Get("node_disk_size").(int)
 	kubernetes.NodesCount = d.Get("nodes_count").(int)
+	if d.HasChange("nodes_count") {
+		return diag.Errorf("[ERROR-053]: cannot update Kubernetes 'nodes_count'")
+	}
 
 	if d.HasChange("floating") {
 		needUpdate = true
@@ -199,7 +202,7 @@ func resourceKubernetesUpdate(ctx context.Context, d *schema.ResourceData, meta 
 
 	if needUpdate {
 		if err := repeatOnError(kubernetes.Update, kubernetes); err != nil {
-			return diag.Errorf("Error updating Kubernetes: %s", err)
+			return diag.Errorf("[ERROR-053]: err with updating Kubernetes: %s", err)
 		}
 	}
 

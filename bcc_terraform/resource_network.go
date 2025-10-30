@@ -213,14 +213,16 @@ func createSubnet(d *schema.ResourceData, manager *bcc.Manager) (diagErr diag.Di
 		}
 
 		dnsServersList := subnetInfo2["dns"].([]interface{})
-		dnsServers := make([]*bcc.SubnetDNSServer, len(dnsServersList))
-		for i, dns := range dnsServersList {
-			s1 := bcc.NewSubnetDNSServer(dns.(string))
-			dnsServers[i] = &s1
-		}
+		if len(dnsServersList) > 0 {
+			dnsServers := make([]*bcc.SubnetDNSServer, len(dnsServersList))
+			for i, dns := range dnsServersList {
+				s1 := bcc.NewSubnetDNSServer(dns.(string))
+				dnsServers[i] = &s1
+			}
 
-		if err := subnet.UpdateDNSServers(dnsServers); err != nil {
-			return diag.Errorf("dns: Error Update DNS Servers: %s", err)
+			if err := subnet.UpdateDNSServers(dnsServers); err != nil {
+				return diag.Errorf("dns: Error Update DNS Servers: %s", err)
+			}
 		}
 
 	}

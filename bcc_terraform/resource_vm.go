@@ -2,6 +2,7 @@ package bcc_terraform
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -21,7 +22,7 @@ func resourceVm() *schema.Resource {
 		UpdateContext: resourceVmUpdate,
 		DeleteContext: resourceVmDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceVmImport,
 		},
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(10 * time.Minute),
@@ -120,6 +121,31 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 	return resourceVmRead(ctx, d, meta)
 }
 
+func resourceVmImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	manager := meta.(*CombinedConfig).Manager()
+	vm, err := manager.GetVm(d.Id())
+	if err != nil {
+		if err.(*bcc.ApiError).Code() == 404 {
+			d.SetId("")
+			return nil, err
+		} else {
+			return nil, err
+		}
+	}
+
+	if err = setVmResourceData(d, vm); err != nil {
+		return nil, err
+	}
+	if err = d.Set("vdc_id", vm.Vdc.ID); err != nil {
+		return nil, err
+	}
+	if err = d.Set("user_data", vm.UserData); err != nil {
+		return nil, err
+	}
+
+	return []*schema.ResourceData{d}, nil
+}
+
 func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 	vm, err := manager.GetVm(d.Id())
@@ -132,58 +158,9 @@ func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{
 		}
 	}
 
-	d.SetId(vm.ID)
-	d.Set("name", vm.Name)
-	d.Set("cpu", vm.Cpu)
-	d.Set("ram", vm.Ram)
-	d.Set("template_id", vm.Template.ID)
-	d.Set("power", vm.Power)
-	d.Set("hot_add", vm.HotAdd)
-	d.Set("platform", vm.Platform)
-	d.Set("tags", marshalTagNames(vm.Tags))
-
-	flattenDisks := make([]string, len(vm.Disks)-1)
-	for i, disk := range vm.Disks {
-		if i == 0 {
-			systemDisk := make([]interface{}, 1)
-			systemDisk[0] = map[string]interface{}{
-				"id":                 disk.ID,
-				"name":               "Основной диск",
-				"size":               disk.Size,
-				"storage_profile_id": disk.StorageProfile.ID,
-				"external_id":        disk.ExternalID,
-			}
-
-			d.Set("system_disk", systemDisk)
-			continue
-		}
-		flattenDisks[i-1] = disk.ID
+	if err = setVmResourceData(d, vm); err != nil {
+		return diag.FromErr(err)
 	}
-	d.Set("disks", flattenDisks)
-
-	flattenPorts := make([]string, len(vm.Ports))
-	flattenNetworks := make([]map[string]interface{}, 0, len(vm.Ports))
-	for i, port := range vm.Ports {
-		flattenPorts[i] = port.ID
-		flattenNetworks = append(flattenNetworks, map[string]interface{}{
-			"id":         port.ID,
-			"ip_address": port.IpAddress,
-		})
-	}
-	d.Set("ports", flattenPorts)
-	d.Set("networks", flattenNetworks)
-	d.Set("floating", vm.Floating != nil)
-	d.Set("floating_ip", "")
-
-	if vm.Floating != nil {
-		d.Set("floating_ip", vm.Floating.IpAddress)
-	}
-
-	affGrs := make([]string, len(vm.AffinityGroups))
-	for idx, item := range vm.AffinityGroups {
-		affGrs[idx] = item.ID
-	}
-	d.Set("affinity_groups", affGrs)
 
 	return nil
 }
@@ -637,6 +614,71 @@ func detachVmOldDisk(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) d
 	if needReload {
 		if err := vm.Reload(); err != nil {
 			return diag.FromErr(err)
+		}
+	}
+
+	return nil
+}
+
+func setVmResourceData(d *schema.ResourceData, vm *bcc.Vm) (err error) {
+	d.SetId(vm.ID)
+
+	flattenDisks := make([]string, len(vm.Disks)-1)
+	for i, disk := range vm.Disks {
+		if i == 0 {
+			systemDisk := make([]interface{}, 1)
+			systemDisk[0] = map[string]interface{}{
+				"id":                 disk.ID,
+				"name":               "Основной диск",
+				"size":               disk.Size,
+				"storage_profile_id": disk.StorageProfile.ID,
+				"external_id":        disk.ExternalID,
+			}
+
+			if err = d.Set("system_disk", systemDisk); err != nil {
+				return fmt.Errorf("error with setting system_disk %w", err)
+			}
+			continue
+		}
+		flattenDisks[i-1] = disk.ID
+	}
+
+	flattenPorts := make([]string, len(vm.Ports))
+	flattenNetworks := make([]interface{}, len(vm.Ports))
+	for i, port := range vm.Ports {
+		flattenPorts[i] = port.ID
+		flattenNetworks[i] = map[string]interface{}{
+			"id":         port.ID,
+			"ip_address": port.IpAddress,
+		}
+	}
+
+	fields := map[string]interface{}{
+		"name":            vm.Name,
+		"cpu":             vm.Cpu,
+		"ram":             vm.Ram,
+		"template_id":     vm.Template.ID,
+		"power":           vm.Power,
+		"hot_add":         vm.HotAdd,
+		"platform":        vm.Platform.(string),
+		"tags":            marshalTagNames(vm.Tags),
+		"affinity_groups": vm.AffinityGroups,
+		"disks":           flattenDisks,
+		"ports":           flattenPorts,
+		"networks":        flattenNetworks,
+		"floating":        vm.Floating != nil,
+		"floating_ip":     "",
+	}
+
+	for key, value := range fields {
+		if err = d.Set(key, value); err != nil {
+			return fmt.Errorf("error with setting %s: %w", key, err)
+		}
+	}
+
+	if vm.Floating != nil {
+		if err = d.Set("floating_ip", vm.Floating.IpAddress); err != nil {
+			return fmt.Errorf("error with setting floating_ip: %w", err)
 		}
 	}
 

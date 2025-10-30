@@ -36,14 +36,14 @@ func resourcePort() *schema.Resource {
 func resourcePortCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 
-	targetVdc, err := GetVdcById(d, manager)
-	if err != nil {
-		return diag.Errorf("vdc_id: Error getting VDC: %s", err)
-	}
-
 	portNetwork, err := GetNetworkById(d, manager, nil)
 	if err != nil {
-		return diag.Errorf("Error getting network: %s", err)
+		return diag.FromErr(err)
+	}
+
+	targetVdc, err := GetVdcByVal(portNetwork.Vdc.Id, manager)
+	if err != nil {
+		return diag.FromErr(err)
 	}
 
 	firewallsCount := d.Get("firewall_templates.#").(int)
@@ -68,14 +68,18 @@ func resourcePortCreate(ctx context.Context, d *schema.ResourceData, meta interf
 	log.Printf("[DEBUG] subnetInfo: %#v", targetVdc)
 	newPort := bcc.NewPort(portNetwork, firewalls, ipAddressStr)
 	newPort.Tags = unmarshalTagNames(d.Get("tags"))
-	fmt.Println(ipAddressStr)
-	targetVdc.WaitLock()
-	if err = targetVdc.CreateEmptyPort(&newPort); err != nil {
-		return diag.Errorf("Error creating port: %s", err)
+
+	if err = targetVdc.WaitLock(); err != nil {
+		return diag.FromErr(err)
 	}
-	newPort.WaitLock()
+	if err = targetVdc.CreateEmptyPort(&newPort); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = newPort.WaitLock(); err != nil {
+		return diag.FromErr(err)
+	}
+
 	d.SetId(newPort.ID)
-	fmt.Println(ipAddressStr)
 	log.Printf("[INFO] Port created, ID: %s", d.Id())
 
 	return resourcePortRead(ctx, d, meta)
@@ -119,9 +123,9 @@ func resourcePortUpdate(ctx context.Context, d *schema.ResourceData, meta interf
 	if d.HasChange("tags") {
 		port.Tags = unmarshalTagNames(d.Get("tags"))
 	}
-	ip_address := d.Get("ip_address").(string)
+	ipAddress := d.Get("ip_address").(string)
 	if d.HasChange("ip_address") {
-		port.IpAddress = &ip_address
+		port.IpAddress = &ipAddress
 	}
 
 	if d.HasChange("firewall_templates") {
@@ -138,10 +142,12 @@ func resourcePortUpdate(ctx context.Context, d *schema.ResourceData, meta interf
 
 		port.FirewallTemplates = firewalls
 	}
-	if err := port.Update(); err != nil {
+	if err = port.Update(); err != nil {
 		return diag.FromErr(err)
 	}
-	port.WaitLock()
+	if err = port.WaitLock(); err != nil {
+		return diag.FromErr(err)
+	}
 	return resourcePortRead(ctx, d, meta)
 }
 
@@ -158,7 +164,9 @@ func resourcePortDelete(ctx context.Context, d *schema.ResourceData, meta interf
 	if err != nil {
 		return diag.Errorf("Error deleting port: %s", err)
 	}
-	port.WaitLock()
+	if err = port.WaitLock(); err != nil {
+		return diag.FromErr(err)
+	}
 
 	d.SetId("")
 	log.Printf("[INFO] Port deleted, ID: %s", portId)

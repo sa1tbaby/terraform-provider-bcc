@@ -52,6 +52,7 @@ func (args *Arguments) injectCreateVm() {
 		"platform": {
 			Type:        schema.TypeString,
 			Optional:    true,
+			Default:     "",
 			ForceNew:    true,
 			Description: "platform of the Vm",
 		},
@@ -106,7 +107,6 @@ func (args *Arguments) injectCreateVm() {
 		"networks": {
 			Type:        schema.TypeList,
 			Optional:    true,
-			Computed:    true,
 			MinItems:    1,
 			MaxItems:    10,
 			Description: "List of Ports connected to the Vm",

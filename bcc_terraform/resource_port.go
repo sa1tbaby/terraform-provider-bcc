@@ -23,7 +23,7 @@ func resourcePort() *schema.Resource {
 		UpdateContext: resourcePortUpdate,
 		DeleteContext: resourcePortDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourcePortImport,
 		},
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(10 * time.Minute),
@@ -97,17 +97,9 @@ func resourcePortRead(ctx context.Context, d *schema.ResourceData, meta interfac
 		}
 	}
 
-	d.SetId(port.ID)
-	d.Set("ip_address", port.IpAddress)
-	d.Set("network_id", port.Network)
-	d.Set("tags", marshalTagNames(port.Tags))
-
-	firewalls := make([]*string, len(port.FirewallTemplates))
-	for i, firewall := range port.FirewallTemplates {
-		firewalls[i] = &firewall.ID
+	if err = setPortResourceData(d, port); err != nil {
+		return diag.Errorf("crash via setting resource data: %s", err)
 	}
-
-	d.Set("firewall_templates", firewalls)
 
 	return nil
 }
@@ -171,4 +163,51 @@ func resourcePortDelete(ctx context.Context, d *schema.ResourceData, meta interf
 	d.SetId("")
 	log.Printf("[INFO] Port deleted, ID: %s", portId)
 	return nil
+}
+
+func resourcePortImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	manager := meta.(*CombinedConfig).Manager()
+	port, err := manager.GetPort(d.Id())
+	if err != nil {
+		if err.(*bcc.ApiError).Code() == 404 {
+			d.SetId("")
+			return nil, err
+		} else {
+			return nil, err
+		}
+	}
+
+	if err = setPortResourceData(d, port); err != nil {
+		return nil, err
+	}
+	if err = d.Set("vdc_id", port.Network.Vdc.Id); err != nil {
+		return nil, err
+	}
+
+	return []*schema.ResourceData{d}, nil
+}
+
+func setPortResourceData(d *schema.ResourceData, port *bcc.Port) (err error) {
+	d.SetId(port.ID)
+
+	firewalls := make([]*string, len(port.FirewallTemplates))
+	for i, firewall := range port.FirewallTemplates {
+		firewalls[i] = &firewall.ID
+	}
+
+	fields := map[string]interface{}{
+		"firewall_templates": firewalls,
+		"ip_address":         port.IpAddress,
+		"network_id":         port.Network,
+		"tags":               marshalTagNames(port.Tags),
+	}
+
+	for key, value := range fields {
+		if err = d.Set(key, value); err != nil {
+			return fmt.Errorf("crash via setting %s: %w", key, err)
+		}
+	}
+
+	return nil
+
 }

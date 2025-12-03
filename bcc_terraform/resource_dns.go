@@ -2,6 +2,7 @@ package bcc_terraform
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ func resourceDns() *schema.Resource {
 	args := Defaults()
 	args.injectCreateDns()
 	args.injectContextProjectById()
+
 	return &schema.Resource{
 		CreateContext: resourceDnsCreate,
 		ReadContext:   resourceDnsRead,
@@ -32,10 +34,12 @@ func resourceDns() *schema.Resource {
 
 func resourceDnsCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
+
 	project, err := GetProjectById(d, manager)
 	if err != nil {
 		return diag.Errorf("project_id: Error getting Project: %s", err)
 	}
+
 	name := d.Get("name").(string)
 	newDns := bcc.NewDns(name)
 	if !strings.HasSuffix(name, ".") {
@@ -56,7 +60,8 @@ func resourceDnsCreate(ctx context.Context, d *schema.ResourceData, meta interfa
 
 func resourceDnsRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	Dns, err := manager.GetDns(d.Id())
+
+	dns, err := manager.GetDns(d.Id())
 	if err != nil {
 		if err.(*bcc.ApiError).Code() == 404 {
 			d.SetId("")
@@ -66,10 +71,15 @@ func resourceDnsRead(ctx context.Context, d *schema.ResourceData, meta interface
 		}
 	}
 
-	d.SetId(Dns.ID)
-	d.Set("name", Dns.Name)
-	d.Set("project", Dns.Project.ID)
-	d.Set("tags", marshalTagNames(Dns.Tags))
+	fields := map[string]interface{}{
+		"name":       dns.Name,
+		"project_id": dns.Project.ID,
+		"tags":       unmarshalTagNames(dns.Tags),
+	}
+
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-046]: crash via setting resource data: %s", err)
+	}
 
 	return nil
 }

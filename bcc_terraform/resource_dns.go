@@ -14,7 +14,7 @@ import (
 func resourceDns() *schema.Resource {
 	args := Defaults()
 	args.injectCreateDns()
-
+	args.injectContextProjectById()
 	return &schema.Resource{
 		CreateContext: resourceDnsCreate,
 		ReadContext:   resourceDnsRead,

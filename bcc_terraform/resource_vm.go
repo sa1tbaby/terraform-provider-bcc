@@ -45,27 +45,40 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		return diag.Errorf("template_id: Error getting template: %s", err)
 	}
 
-	vmName := d.Get("name").(string)
-	cpu := d.Get("cpu").(int)
-	ram := d.Get("ram").(float64)
-	userData := d.Get("user_data").(string)
-	hotAdd := d.Get("hot_add").(bool)
-	platform := d.Get("platform").(string)
-	log.Printf(vmName, cpu, ram, userData, template.Name, platform)
+	config := struct {
+		name                string
+		cpu                 int
+		ram                 float64
+		platformId          string
+		userData            string
+		hotAdd              bool
+		sysDisk             interface{}
+		sysDiskSize         int
+		sysStorageProfileId string
+		AffinityGroups      []string
+	}{
+		name:                d.Get("name").(string),
+		cpu:                 d.Get("cpu").(int),
+		ram:                 d.Get("ram").(float64),
+		platformId:          d.Get("platform_id").(string),
+		userData:            d.Get("user_data").(string),
+		hotAdd:              d.Get("hot_add").(bool),
+		sysDiskSize:         d.Get("system_disk.0.size").(int),
+		sysStorageProfileId: d.Get("system_disk.0.storage_profile_id").(string),
+		AffinityGroups:      d.Get("affinity_groups").([]string),
+		sysDisk:             d.Get("system_disk"),
+	}
 
 	// System disk creation
-	systemDiskArgs := d.Get("system_disk.0").(map[string]interface{})
-	diskSize := systemDiskArgs["size"].(int)
-	storageProfileId := systemDiskArgs["storage_profile_id"].(string)
-	storageProfile, err := targetVdc.GetStorageProfile(storageProfileId)
+	storageProfile, err := targetVdc.GetStorageProfile(config.sysStorageProfileId)
 	if err != nil {
 		return diag.Errorf("storage_profile_id: Error storage profile %s not found", storageProfileId)
 	}
-
 	systemDiskList := make([]*bcc.Disk, 1)
-	newDisk := bcc.NewDisk("Основной диск", diskSize, storageProfile)
+	newDisk := bcc.NewDisk("Основной диск", config.sysDiskSize, storageProfile)
 	systemDiskList[0] = &newDisk
 
+	// Ports creation
 	portsIds := collectVmNetworks(d)
 	ports := make([]*bcc.Port, len(portsIds))
 	for i, portId := range portsIds {
@@ -75,7 +88,6 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		}
 		ports[i] = port
 	}
-
 	var floatingIp *string = nil
 	if d.Get("floating").(bool) {
 		floatingIpStr := "RANDOM_FIP"
@@ -83,11 +95,21 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 	}
 
 	newVm := bcc.NewVm(
-		vmName, cpu, ram, template, nil, platform,
-		&userData, ports, systemDiskList, floatingIp, hotAdd,
+		config.name, config.cpu, config.ram, template, nil,
+		&config.userData, ports, systemDiskList, floatingIp, config.hotAdd,
 	)
 	newVm.Tags = unmarshalTagNames(d.Get("tags"))
-	newVm.AffinityGroups = d.Get("affinity_groups")
+
+	if config.platformId != "" {
+		newVm.Platform, err = manager.GetPlatform(config.platformId)
+		if err != nil {
+			return diag.Errorf("[ERROR-021]: crash via getting template: %s", err)
+		}
+	}
+
+	for _, item := range config.AffinityGroups {
+		newVm.AffinityGroups = append(newVm.AffinityGroups, &bcc.AffinityGroup{ID: item})
+	}
 
 	if err = targetVdc.CreateVm(&newVm); err != nil {
 		return diag.Errorf("Error creating vm: %s", err)
@@ -113,9 +135,18 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 
 	syncVmDisks(d, manager, targetVdc, &newVm)
 
-	d.Set("system_disk", systemDisk)
-	d.SetId(newVm.ID)
+	//if err = syncVmDisks(d, manager, targetVdc, &newVm); err != nil {
+	//	return diag.Errorf("[ERROR-021]: %s", err)
+	//}
 
+	d.SetId(newVm.ID)
+	fields := map[string]interface{}{
+		"user_data":   config.userData,
+		"system_disk": config.sysDisk,
+	}
+	if err = setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-021]: %s", err)
+	}
 	log.Printf("[INFO] VM created, ID: %s", d.Id())
 
 	return resourceVmRead(ctx, d, meta)
@@ -123,6 +154,7 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 
 func resourceVmImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 	manager := meta.(*CombinedConfig).Manager()
+
 	vm, err := manager.GetVm(d.Id())
 	if err != nil {
 		if err.(*bcc.ApiError).Code() == 404 {
@@ -158,8 +190,62 @@ func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{
 		}
 	}
 
-	if err = setVmResourceData(d, vm); err != nil {
+	flattenDisks := make([]string, len(vm.Disks)-1)
+	for i, disk := range vm.Disks {
+		if i == 0 {
+			systemDisk := make([]interface{}, 1)
+			systemDisk[0] = map[string]interface{}{
+				"id":                 disk.ID,
+				"name":               "Основной диск",
+				"size":               disk.Size,
+				"storage_profile_id": disk.StorageProfile.ID,
+				"external_id":        disk.ExternalID,
+			}
+
+			if err = d.Set("system_disk", systemDisk); err != nil {
+				return diag.Errorf("error with setting system_disk %w", err)
+			}
+			continue
+		}
+		flattenDisks[i-1] = disk.ID
+	}
+
+	flattenPorts := make([]string, len(vm.Ports))
+	flattenNetworks := make([]interface{}, len(vm.Ports))
+	for i, port := range vm.Ports {
+		flattenPorts[i] = port.ID
+		flattenNetworks[i] = map[string]interface{}{
+			"id":         port.ID,
+			"ip_address": port.IpAddress,
+		}
+	}
+
+	fields := map[string]interface{}{
+		"vdc_id":          vm.Vdc.ID,
+		"name":            vm.Name,
+		"cpu":             vm.Cpu,
+		"ram":             vm.Ram,
+		"template_id":     vm.Template.ID,
+		"power":           vm.Power,
+		"hot_add":         vm.HotAdd,
+		"platform":        vm.Platform.ID,
+		"tags":            marshalTagNames(vm.Tags),
+		"affinity_groups": vm.AffinityGroups,
+		"disks":           flattenDisks,
+		"ports":           flattenPorts,
+		"networks":        flattenNetworks,
+		"floating":        vm.Floating != nil,
+		"floating_ip":     "",
+	}
+
+	if err = setResourceDataFromMap(d, fields); err != nil {
 		return diag.FromErr(err)
+	}
+
+	if vm.Floating != nil {
+		if err = d.Set("floating_ip", vm.Floating.IpAddress); err != nil {
+			return diag.Errorf("error with setting floating_ip: %w", err)
+		}
 	}
 
 	return nil
@@ -217,7 +303,11 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 
 	if d.HasChange("affinity_groups") {
 		needUpdate = true
-		vm.AffinityGroups = d.Get("affinity_groups")
+		var _affGrs []*bcc.AffinityGroup
+		for _, item := range d.Get("affinity_groups").([]interface{}) {
+			_affGrs = append(_affGrs, &bcc.AffinityGroup{ID: item.(string)})
+		}
+		vm.AffinityGroups = _affGrs
 	}
 
 	if needUpdate {
@@ -295,9 +385,7 @@ func resourceVmDelete(ctx context.Context, d *schema.ResourceData, meta interfac
 	if err = vm.Delete(); err != nil {
 		return diag.Errorf("Error deleting vm: %s", err)
 	}
-	if err = vm.WaitLock(); err != nil {
-		return diag.FromErr(err)
-	}
+	vm.WaitLock()
 
 	return nil
 }
@@ -468,7 +556,7 @@ func disconnectVmOldPort(portId string, manager *bcc.Manager, vm *bcc.Vm) diag.D
 	return nil
 }
 
-func syncVmDisks(d *schema.ResourceData, manager *bcc.Manager, vdc *bcc.Vdc, vm *bcc.Vm) (diagErr diag.Diagnostics) {
+func syncVmDisks(d *schema.ResourceData, manager *bcc.Manager, vdc *bcc.Vdc, vm *bcc.Vm) error {
 	targetVdc, err := GetVdcById(d, manager)
 	if err != nil {
 		return diag.Errorf("vdc_id: Error getting VDC: %s", err)
@@ -517,10 +605,10 @@ func syncVmDisks(d *schema.ResourceData, manager *bcc.Manager, vdc *bcc.Vdc, vm 
 		}
 	}
 
-	return
+	return nil
 }
 
-func attachVmNewDisk(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) diag.Diagnostics {
+func attachVmNewDisk(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) error {
 	disksIds := d.Get("disks").(*schema.Set).List()
 	// Save system_disk
 	systemDiskResource := d.Get("system_disk.0")
@@ -575,11 +663,14 @@ func attachVmNewDisk(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) d
 	return nil
 }
 
-func detachVmOldDisk(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) diag.Diagnostics {
-	disksIds := d.Get("disks").(*schema.Set).List()
+func detachVmOldDisk(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) error {
+	var needReload bool
+	vmId := vm.ID
+
 	systemDiskResource := d.Get("system_disk.0")
 	systemDisk := systemDiskResource.(map[string]interface{})["id"].(string)
-	var needReload bool
+
+	disksIds := d.Get("disks").(*schema.Set).List()
 	disksIds = append(disksIds, systemDisk)
 	vmId := vm.ID
 
@@ -601,11 +692,9 @@ func detachVmOldDisk(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) d
 			if disk.Vm != nil && disk.Vm.ID == vmId {
 				log.Printf("Disk %s found on vm and not mentioned in the state."+
 					" Disk will be detached", disk.ID)
-
 				if err = vm.DetachDisk(disk); err != nil {
 					return diag.FromErr(err)
 				}
-
 				needReload = true
 			}
 		}
@@ -616,71 +705,5 @@ func detachVmOldDisk(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) d
 			return diag.FromErr(err)
 		}
 	}
-
-	return nil
-}
-
-func setVmResourceData(d *schema.ResourceData, vm *bcc.Vm) (err error) {
-	d.SetId(vm.ID)
-
-	flattenDisks := make([]string, len(vm.Disks)-1)
-	for i, disk := range vm.Disks {
-		if i == 0 {
-			systemDisk := make([]interface{}, 1)
-			systemDisk[0] = map[string]interface{}{
-				"id":                 disk.ID,
-				"name":               "Основной диск",
-				"size":               disk.Size,
-				"storage_profile_id": disk.StorageProfile.ID,
-				"external_id":        disk.ExternalID,
-			}
-
-			if err = d.Set("system_disk", systemDisk); err != nil {
-				return fmt.Errorf("error with setting system_disk %w", err)
-			}
-			continue
-		}
-		flattenDisks[i-1] = disk.ID
-	}
-
-	flattenPorts := make([]string, len(vm.Ports))
-	flattenNetworks := make([]interface{}, len(vm.Ports))
-	for i, port := range vm.Ports {
-		flattenPorts[i] = port.ID
-		flattenNetworks[i] = map[string]interface{}{
-			"id":         port.ID,
-			"ip_address": port.IpAddress,
-		}
-	}
-
-	fields := map[string]interface{}{
-		"name":            vm.Name,
-		"cpu":             vm.Cpu,
-		"ram":             vm.Ram,
-		"template_id":     vm.Template.ID,
-		"power":           vm.Power,
-		"hot_add":         vm.HotAdd,
-		"platform":        vm.Platform.(string),
-		"tags":            marshalTagNames(vm.Tags),
-		"affinity_groups": vm.AffinityGroups,
-		"disks":           flattenDisks,
-		"ports":           flattenPorts,
-		"networks":        flattenNetworks,
-		"floating":        vm.Floating != nil,
-		"floating_ip":     "",
-	}
-
-	for key, value := range fields {
-		if err = d.Set(key, value); err != nil {
-			return fmt.Errorf("error with setting %s: %w", key, err)
-		}
-	}
-
-	if vm.Floating != nil {
-		if err = d.Set("floating_ip", vm.Floating.IpAddress); err != nil {
-			return fmt.Errorf("error with setting floating_ip: %w", err)
-		}
-	}
-
 	return nil
 }

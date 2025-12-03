@@ -24,11 +24,6 @@ func (args *Arguments) injectContextGetDisk() {
 
 func (args *Arguments) injectCreateDisk() {
 	args.merge(Arguments{
-		"id": {
-			Type:        schema.TypeString,
-			Computed:    true,
-			Description: "id of the Disk",
-		},
 		"name": {
 			Type:     schema.TypeString,
 			Required: true,

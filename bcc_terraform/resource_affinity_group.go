@@ -2,6 +2,7 @@ package bcc_terraform
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -22,7 +23,7 @@ func resourceAffinityGroup() *schema.Resource {
 		DeleteContext: resourceAffinityGroupDelete,
 
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceAffinityGroupImport,
 		},
 
 		Timeouts: &schema.ResourceTimeout{
@@ -165,6 +166,37 @@ func resourceAffinityGroupDelete(ctx context.Context, d *schema.ResourceData, me
 
 	if err = affGroup.WaitLock(); err != nil {
 		return diag.FromErr(err)
+	}
+
+	return nil
+}
+
+func resourceAffinityGroupImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	manager := meta.(*CombinedConfig).Manager()
+
+	affGroup, err := manager.GetAffinityGroup(d.Id())
+	if err != nil {
+		return nil, fmt.Errorf("error getting affinity group: %s", err)
+	}
+
+	d.SetId(affGroup.ID)
+
+	return []*schema.ResourceData{d}, nil
+
+}
+
+func resourceAffinityGroupSetData(d *schema.ResourceData, a *bcc.AffinityGroup) error {
+	fields := map[string]interface{}{
+		"vdc_id":      a.Vdc.ID,
+		"name":        a.Name,
+		"description": a.Description,
+		"policy":      a.Policy,
+		"reboot":      a.Reboot,
+		"vms":         a.Vms,
+	}
+
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return err
 	}
 
 	return nil

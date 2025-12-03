@@ -37,23 +37,24 @@ func resourceDnsCreate(ctx context.Context, d *schema.ResourceData, meta interfa
 
 	project, err := GetProjectById(d, manager)
 	if err != nil {
-		return diag.Errorf("project_id: Error getting Project: %s", err)
+		return diag.Errorf("[ERROR-046]: crash via getting Projecct by 'id': %s", err)
 	}
 
 	name := d.Get("name").(string)
-	newDns := bcc.NewDns(name)
 	if !strings.HasSuffix(name, ".") {
-		return diag.Errorf("name: must be ending by '.'")
+		return diag.Errorf("[ERROR-046]: 'name' must be ending by '.'")
 	}
+
+	newDns := bcc.NewDns(name)
 	newDns.Tags = unmarshalTagNames(d.Get("tags"))
 
 	err = project.CreateDns(&newDns)
 	if err != nil {
-		return diag.Errorf("Error creating Dns: %s", err)
+		return diag.Errorf("[ERROR-046]: creating Dns: %s", err)
 	}
 
 	d.SetId(newDns.ID)
-	log.Printf("[INFO] Dns created, ID: %s", d.Id())
+	log.Printf("[INFO-046]: Dns created, ID: %s", d.Id())
 
 	return resourceDnsRead(ctx, d, meta)
 }
@@ -67,7 +68,7 @@ func resourceDnsRead(ctx context.Context, d *schema.ResourceData, meta interface
 			d.SetId("")
 			return nil
 		} else {
-			return diag.Errorf("id: Error getting Dns: %s", err)
+			return diag.Errorf("[ERROR-046]: crash via getting Dns: %s", err)
 		}
 	}
 
@@ -88,12 +89,12 @@ func resourceDnsDelete(ctx context.Context, d *schema.ResourceData, meta interfa
 	manager := meta.(*CombinedConfig).Manager()
 	dns, err := manager.GetDns(d.Id())
 	if err != nil {
-		return diag.Errorf("id: Error getting Dns: %s", err)
+		return diag.Errorf("[ERROR-046]: crash via getting Dns by 'id': %s", err)
 	}
 
 	err = dns.Delete()
 	if err != nil {
-		return diag.Errorf("Error deleting Dns: %s", err)
+		return diag.Errorf("[ERROR-046]: crash via deleting Dns: %s", err)
 	}
 
 	return nil

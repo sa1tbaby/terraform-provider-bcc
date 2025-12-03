@@ -45,7 +45,8 @@ func (args *Arguments) injectCreateKubernetes() {
 		},
 		"platform": {
 			Type:        schema.TypeString,
-			Required:    true,
+			Optional:    true,
+			Default:     "",
 			ForceNew:    true,
 			Description: "type of cpu platform",
 		},

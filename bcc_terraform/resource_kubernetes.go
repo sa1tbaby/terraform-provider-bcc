@@ -37,17 +37,13 @@ func resourceKubernetesCreate(ctx context.Context, d *schema.ResourceData, meta 
 	manager := meta.(*CombinedConfig).Manager()
 	targetVdc, err := GetVdcById(d, manager)
 	if err != nil {
-		return diag.Errorf("vdc_id: Error getting VDC: %s", err)
+		return diag.Errorf("[ERROR-053]: crash via getting VDC: %s", err)
 	}
 
-	platform_id := d.Get("platform").(string)
-	if targetVdc.Hypervisor.Type == "Vmware" && platform_id == "" {
-		return diag.Errorf("platform: This field is required for %s Hypervisor", targetVdc.Hypervisor.Type)
+	if targetVdc.Hypervisor.Type == "Vmware" && platformId == "" {
+		return diag.Errorf("[ERROR-053]: field 'platform' is required for %s Hypervisor", targetVdc.Hypervisor.Type)
 	}
-	platform, err := manager.GetPlatform(platform_id)
-	if err != nil {
-		return diag.Errorf("template_id: Error getting template: %s", err)
-	}
+
 	template, err := GetKubernetesTemplateById(d, manager, targetVdc)
 	if err != nil {
 		return diag.Errorf("template_id: Error getting template: %s", err)
@@ -77,12 +73,11 @@ func resourceKubernetesCreate(ctx context.Context, d *schema.ResourceData, meta 
 		floatingIp = &floatingIpStr
 	}
 
-	newKubernetes := bcc.NewKubernetes(name, cpu, ram, nodesCount, nodeDiskSize, floatingIp, template, storage_profile, pub_key.ID, platform)
-	newKubernetes.Tags = unmarshalTagNames(d.Get("tags"))
-
-	err = targetVdc.CreateKubernetes(&newKubernetes)
-	if err != nil {
-		return diag.Errorf("Error creating Kubernetes: %s", err)
+	if platformId != "" {
+		newKubernetes.NodePlatform, err = manager.GetPlatform(platformId)
+		if err != nil {
+			return diag.Errorf("template_id: Error getting template: %s", err)
+		}
 	}
 
 	newKubernetes.WaitLock()

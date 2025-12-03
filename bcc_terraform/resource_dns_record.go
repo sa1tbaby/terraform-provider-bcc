@@ -23,7 +23,7 @@ func resourceDnsRecord() *schema.Resource {
 		UpdateContext: resourceDnsRecordUpdate,
 		DeleteContext: resourceDnsRecordDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceDnsRecordImport,
 		},
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(10 * time.Minute),
@@ -181,4 +181,30 @@ func resourceDnsRecordDelete(ctx context.Context, d *schema.ResourceData, meta i
 	}
 
 	return nil
+}
+
+func resourceDnsRecordImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	manager := meta.(*CombinedConfig).Manager()
+
+	id := d.Id()
+	ids := strings.Split(id, ",")
+
+	dns, err := manager.GetDns(ids[0])
+	if err != nil {
+		d.SetId("")
+		return nil, fmt.Errorf("id: Error getting Dns: %s", err)
+	}
+
+	dnsRecord, err := dns.GetDnsRecord(ids[1])
+	if err != nil {
+		d.SetId("")
+		return nil, fmt.Errorf("id: Error getting Dns record: %s", err)
+	}
+
+	d.SetId(dnsRecord.ID)
+	if err := d.Set("dns_id", dns.ID); err != nil {
+		return nil, fmt.Errorf("error setting 'dns_id': %s", err)
+	}
+
+	return []*schema.ResourceData{d}, nil
 }

@@ -22,7 +22,7 @@ func resourceDns() *schema.Resource {
 		ReadContext:   resourceDnsRead,
 		DeleteContext: resourceDnsDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceDnsImport,
 		},
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(10 * time.Minute),
@@ -98,4 +98,17 @@ func resourceDnsDelete(ctx context.Context, d *schema.ResourceData, meta interfa
 	}
 
 	return nil
+}
+
+func resourceDnsImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	manager := meta.(*CombinedConfig).Manager()
+
+	dns, err := manager.GetDns(d.Id())
+	if err != nil {
+		return nil, fmt.Errorf("[ERROR-046]: crash via getting Dns: %s", err)
+	}
+
+	d.SetId(dns.ID)
+
+	return []*schema.ResourceData{d}, nil
 }

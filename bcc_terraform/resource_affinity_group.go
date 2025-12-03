@@ -3,7 +3,6 @@ package bcc_terraform
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/basis-cloud/bcc-go/bcc"
@@ -40,7 +39,7 @@ func resourceAffinityGroupCreate(ctx context.Context, d *schema.ResourceData, me
 
 	targetVdc, err := GetVdcById(d, manager)
 	if err != nil {
-		return diag.Errorf("vdc_id: Error getting VDC: %s", err)
+		return diag.Errorf("[ERROR-042]: crash via getting VDC: %s", err)
 	}
 
 	config := struct {
@@ -63,7 +62,7 @@ func resourceAffinityGroupCreate(ctx context.Context, d *schema.ResourceData, me
 	newAffGp.Reboot = config.Reboot
 
 	if err := targetVdc.CreateAffinityGroup(&newAffGp); err != nil {
-		return diag.Errorf("Error creating AffinityGroup: %s", err)
+		return diag.Errorf("[ERROR-042]: crash via creating AffinityGroup: %s", err)
 	}
 
 	if err = newAffGp.WaitLock(); err != nil {
@@ -84,7 +83,7 @@ func resourceAffinityGroupRead(ctx context.Context, d *schema.ResourceData, meta
 			d.SetId("")
 			return nil
 		} else {
-			return diag.Errorf("Error getting affinity group: %s", err)
+			return diag.Errorf("[ERROR-042]: crash via getting AffinityGroup: %s", err)
 		}
 	}
 
@@ -110,12 +109,7 @@ func resourceAffinityGroupUpdate(ctx context.Context, d *schema.ResourceData, me
 
 	affGroup, err := manager.GetAffinityGroup(d.Id())
 	if err != nil {
-		if err.(*bcc.ApiError).Code() == 404 {
-			d.SetId("")
-			return nil
-		} else {
-			return diag.Errorf("Error getting affinity group: %s", err)
-		}
+		return diag.Errorf("[ERROR-042]: crash via getting AffinityGroup: %s", err)
 	}
 
 	if d.HasChange("name") {
@@ -140,7 +134,7 @@ func resourceAffinityGroupUpdate(ctx context.Context, d *schema.ResourceData, me
 
 	if needUpdate {
 		if err := repeatOnError(affGroup.Update, affGroup); err != nil {
-			return diag.Errorf("Error updating Affinity Group: %s", err)
+			return diag.Errorf("[ERROR-042]: crash via updating AffinityGroup: %s", err)
 		}
 	}
 
@@ -152,21 +146,13 @@ func resourceAffinityGroupDelete(ctx context.Context, d *schema.ResourceData, me
 
 	affGroup, err := manager.GetAffinityGroup(d.Id())
 	if err != nil {
-		if err.(*bcc.ApiError).Code() == 404 {
-			d.SetId("")
-			return nil
-		} else {
-			return diag.Errorf("Error getting affinity group: %s", err)
-		}
+		return diag.Errorf("[ERROR-042]: crash via getting AffinityGroup: %s", err)
 	}
 
 	if err = affGroup.Delete(); err != nil {
-		return diag.Errorf("Error deleting vm: %s", err)
+		return diag.Errorf("[ERROR-042]: crash via deleting vm: %s", err)
 	}
-
-	if err = affGroup.WaitLock(); err != nil {
-		return diag.FromErr(err)
-	}
+	affGroup.WaitLock()
 
 	return nil
 }
@@ -176,7 +162,7 @@ func resourceAffinityGroupImport(ctx context.Context, d *schema.ResourceData, me
 
 	affGroup, err := manager.GetAffinityGroup(d.Id())
 	if err != nil {
-		return nil, fmt.Errorf("error getting affinity group: %s", err)
+		return nil, fmt.Errorf("[ERROR-042]: crash via getting AffinityGroup: %s", err)
 	}
 
 	d.SetId(affGroup.ID)

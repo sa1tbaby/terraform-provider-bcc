@@ -72,24 +72,18 @@ func resourceKubernetesCreate(ctx context.Context, d *schema.ResourceData, meta 
 
 	template, err := GetKubernetesTemplateById(d, manager, targetVdc)
 	if err != nil {
-		return diag.Errorf("template_id: Error getting template: %s", err)
+		return diag.Errorf("[ERROR-053]: crash via getting k8s template: %s", err)
 	}
 
 	storageProfile, err := targetVdc.GetStorageProfile(config.StorageProfileId)
 	if err != nil {
-		return diag.Errorf("storage_profile_id: Error storage profile %s not found", sp_id)
+		return diag.Errorf("[ERROR-053]: storage profile %s not found", config.StorageProfileId)
 	}
 
 	pubKey, err := manager.GetPublicKey(config.UserPublicKeyId)
 	if err != nil {
-		return diag.Errorf("storage_profile_id: Error storage profile %s not found", userPublicKey)
+		return diag.Errorf("[ERROR-053]: user public key %s not found", config.UserPublicKeyId)
 	}
-	name := d.Get("name").(string)
-	cpu := d.Get("node_cpu").(int)
-	ram := d.Get("node_ram").(int)
-	nodesCount := d.Get("nodes_count").(int)
-	nodeDiskSize := d.Get("node_disk_size").(int)
-	log.Printf(name, cpu, ram, template.Name)
 
 	log.Printf(config.Name, config.NodeCpu, config.NodeRam, template.Name)
 
@@ -135,25 +129,9 @@ func resourceKubernetesRead(ctx context.Context, d *schema.ResourceData, meta in
 			d.SetId("")
 			return nil
 		} else {
-			return diag.Errorf("id: Error getting Kubernetes: %s", err)
+			return diag.Errorf("[ERROR-053]: crash via getting k8s by id=%s: %s", d.Id(), err)
 		}
 	}
-
-	d.SetId(Kubernetes.ID)
-	d.Set("name", Kubernetes.Name)
-	d.Set("node_cpu", Kubernetes.NodeCpu)
-	d.Set("node_ram", Kubernetes.NodeRam)
-	d.Set("nodes_count", Kubernetes.NodesCount)
-	d.Set("node_disk_size", Kubernetes.NodeDiskSize)
-	d.Set("platform", Kubernetes.NodePlatform.ID)
-	d.Set("template_id", Kubernetes.Template.ID)
-	d.Set("tags", marshalTagNames(Kubernetes.Tags))
-
-	vms := make([]*string, len(Kubernetes.Vms))
-	for i, vm := range Kubernetes.Vms {
-		vms[i] = &vm.ID
-	}
-	d.Set("vms", vms)
 
 	vms := make([]*string, len(k8s.Vms))
 	for i, vm := range k8s.Vms {
@@ -162,8 +140,7 @@ func resourceKubernetesRead(ctx context.Context, d *schema.ResourceData, meta in
 
 	err = k8s.GetKubernetesConfigUrl()
 	if err != nil {
-		diagErr = diag.Errorf("config: Error getting Kubernetes config: %s", err)
-		return
+		return diag.Errorf("[ERROR-053]: crash via getting k8s config: %s", err)
 	}
 
 	dashboard, err := k8s.GetKubernetesDashBoardUrl()
@@ -203,14 +180,14 @@ func resourceKubernetesUpdate(ctx context.Context, d *schema.ResourceData, meta 
 	manager := meta.(*CombinedConfig).Manager()
 	targetVdc, err := GetVdcById(d, manager)
 	if err != nil {
-		return diag.Errorf("[ERROR-053]: err with getting 'VDC': %s ", err)
+		return diag.Errorf("[ERROR-053]: crash via getting VDC: %s", err)
 	}
 
 	needUpdate := false
 
 	kubernetes, err := manager.GetKubernetes(d.Id())
 	if err != nil {
-		return diag.Errorf("[ERROR-053]: err with getting kubernetes 'id': %s", err)
+		return diag.Errorf("[ERROR-053]: err with getting kubernetes 'id'=%s: %s", d.Id(), err)
 	}
 
 	// Detect Kubernetes changes
@@ -222,7 +199,7 @@ func resourceKubernetesUpdate(ctx context.Context, d *schema.ResourceData, meta 
 		needUpdate = true
 		kubernetes.Tags = unmarshalTagNames(d.Get("tags"))
 	}
-	needUpdate = true
+
 	sp_id := d.Get("node_storage_profile_id").(string)
 	storage_profile, err := targetVdc.GetStorageProfile(sp_id)
 	if err != nil {
@@ -234,6 +211,7 @@ func resourceKubernetesUpdate(ctx context.Context, d *schema.ResourceData, meta 
 	if err != nil {
 		return diag.Errorf("[ERROR-053]: err with getting 'userPublicKey': %s ", userPublicKey)
 	}
+
 	kubernetes.NodeRam = d.Get("node_ram").(int)
 	kubernetes.NodeCpu = d.Get("node_cpu").(int)
 	kubernetes.UserPublicKey = pub_key.ID
@@ -269,12 +247,12 @@ func resourceKubernetesDelete(ctx context.Context, d *schema.ResourceData, meta 
 	manager := meta.(*CombinedConfig).Manager()
 	kubernetes, err := manager.GetKubernetes(d.Id())
 	if err != nil {
-		return diag.Errorf("id: Error getting Kubernetes: %s", err)
+		return diag.Errorf("[ERROR-053]: err with getting kubernetes 'id'=%s: %s", d.Id(), err)
 	}
 
 	err = kubernetes.Delete()
 	if err != nil {
-		return diag.Errorf("Error deleting Kubernetes: %s", err)
+		return diag.Errorf("[ERROR-053]: crash via deleting Kubernetes: %s", err)
 	}
 	kubernetes.WaitLock()
 

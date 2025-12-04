@@ -85,7 +85,7 @@ func (args *Arguments) injectCreateKubernetes() {
 		"user_public_key_id": {
 			Type:        schema.TypeString,
 			Required:    true,
-			Description: "pub key id for vms attached to kubernetes.",
+			Description: "pub key id for vms attached to kubernetes. Value used only in create and not reading from api",
 		},
 		"node_storage_profile_id": {
 			Type:        schema.TypeString,

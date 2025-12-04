@@ -21,7 +21,7 @@ func resourceNetwork() *schema.Resource {
 		UpdateContext: resourceNetworkUpdate,
 		DeleteContext: resourceNetworkDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceNetworkImport,
 		},
 		Schema: args,
 		CustomizeDiff: func(ctx context.Context, d *schema.ResourceDiff, m interface{}) error {
@@ -325,4 +325,20 @@ func updateSubnet(d *schema.ResourceData, manager *bcc.Manager) (diagErr diag.Di
 	}
 
 	return
+}
+
+func resourceNetworkImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	manager := meta.(*CombinedConfig).Manager()
+	network, err := manager.GetNetwork(d.Id())
+	if err != nil {
+		if err.(*bcc.ApiError).Code() == 404 {
+			d.SetId("")
+			return nil, fmt.Errorf("[ERROR-009]: network %s not found: %s", d.Id(), err)
+		} else {
+			return nil, fmt.Errorf("[ERROR-009]: crash via getting network-%s: %s", d.Id(), err)
+		}
+	}
+
+	d.SetId(network.ID)
+	return []*schema.ResourceData{d}, nil
 }

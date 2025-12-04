@@ -20,7 +20,7 @@ func resourceProject() *schema.Resource {
 		UpdateContext: resourceProjectUpdate,
 		DeleteContext: resourceProjectDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceProjectImport,
 		},
 		Schema: args,
 	}
@@ -91,6 +91,19 @@ func resourceProjectRead(ctx context.Context, d *schema.ResourceData, meta inter
 	}
 
 	return nil
+}
+
+func resourceProjectImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	manager := meta.(*CombinedConfig).Manager()
+	project, err := manager.GetProject(d.Id())
+	if err != nil {
+		d.SetId("")
+		return nil, fmt.Errorf("id: Error getting project: %s", err)
+	}
+
+	d.SetId(project.ID)
+
+	return []*schema.ResourceData{d}, nil
 }
 
 func resourceProjectUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {

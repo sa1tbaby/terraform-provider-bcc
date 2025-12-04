@@ -2,10 +2,8 @@ package bcc_terraform
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
-	"sort"
 
 	"github.com/basis-cloud/bcc-go/bcc"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -23,7 +21,7 @@ func resourceRouter() *schema.Resource {
 		UpdateContext: resourceRouterUpdate,
 		DeleteContext: resourceRouterDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceRouterImport,
 		},
 		Schema: args,
 	}
@@ -311,59 +309,17 @@ func syncFloating(d *schema.ResourceData, router *bcc.Router) (err error) {
 	return
 }
 
-func preparePortsToConnect(manager *bcc.Manager, d *schema.ResourceData) (ports []*bcc.Port, err error) {
-	netArray := d.Get("networks").(*schema.Set).List()
-	vdc, err := GetVdcById(d, manager)
+func resourceRouterImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	manager := meta.(*CombinedConfig).Manager()
+
+	router, err := manager.GetRouter(d.Id())
 	if err != nil {
-		return nil, fmt.Errorf("ERROR getting Vdc: %s", err)
+		d.SetId("")
+		return nil, err
 	}
-	for _, networkId := range netArray {
-		newIp := "0.0.0.0"
 
-		vdcPorts, err := vdc.GetPorts()
-		if err != nil {
-			return nil, fmt.Errorf("ports: Error getting Ports from vdc")
-		}
+	d.SetId(router.ID)
 
-		noRouter := false
-		router, err := manager.GetRouter(d.Id())
-		if err != nil {
-			err = nil
-			noRouter = true
-		}
+	return []*schema.ResourceData{d}, nil
 
-		network, err := manager.GetNetwork(networkId.(string))
-		if err != nil {
-			return nil, err
-		}
-		if network.Vdc.Id != vdc.ID {
-			return nil, errors.New("ports: Error Ports should belong to routers vdc")
-		}
-		var newPort bcc.Port
-		newPort.Network = network
-		newPort.IpAddress = &newIp
-		var found bool
-		if noRouter {
-			ports = append(ports, &newPort)
-			continue
-		}
-		for _, port := range vdcPorts {
-			if port.Network != nil && port.Network.ID == network.ID {
-				port.Network.WaitLock()
-			}
-			if port.Connected != nil && port.Connected.ID == router.ID && port.Network.ID == network.ID {
-				ports = append(ports, port)
-				found = true
-				break
-			}
-		}
-		if found {
-			continue
-		}
-		if err = router.CreatePort(&newPort, router); err != nil {
-			return nil, err
-		}
-		ports = append(ports, &newPort)
-	}
-	return
 }

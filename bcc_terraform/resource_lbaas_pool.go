@@ -22,7 +22,7 @@ func resourceLbaasPool() *schema.Resource {
 		UpdateContext: resourceLbaasPoolUpdate,
 		DeleteContext: resourceLbaasPoolDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceLbaasPoolImport,
 		},
 		Schema: args,
 	}
@@ -219,4 +219,28 @@ func resourceLbaasPoolDelete(ctx context.Context, d *schema.ResourceData, meta i
 	d.SetId("")
 
 	return nil
+}
+
+func resourceLbaasPoolImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	manager := meta.(*CombinedConfig).Manager()
+
+	id := d.Id()
+	ids := strings.Split(id, ",")
+
+	lbaas, err := manager.GetLoadBalancer(ids[0])
+	if err != nil {
+		return nil, fmt.Errorf("[ERROR-050]: crash via getting lbaas by id: %s", err)
+	}
+
+	lbaasPool, err := lbaas.GetLoadBalancerPool(ids[1])
+	if err != nil {
+		return nil, fmt.Errorf("[ERROR-050]: crash via getting lbaasPool %s", err)
+	}
+
+	d.SetId(lbaasPool.ID)
+	if err := d.Set("lbaas_id", lbaas.ID); err != nil {
+		return nil, fmt.Errorf("[ERROR-050]: crasg via setting lbaas_id: %s", err)
+	}
+
+	return []*schema.ResourceData{d}, nil
 }

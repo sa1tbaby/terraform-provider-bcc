@@ -23,7 +23,7 @@ func resourceKubernetes() *schema.Resource {
 		UpdateContext: resourceKubernetesUpdate,
 		DeleteContext: resourceKubernetesDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceKubernetesImport,
 		},
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(10 * time.Minute),
@@ -279,4 +279,21 @@ func resourceKubernetesDelete(ctx context.Context, d *schema.ResourceData, meta 
 	kubernetes.WaitLock()
 
 	return nil
+}
+
+func resourceKubernetesImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	manager := meta.(*CombinedConfig).Manager()
+	k8s, err := manager.GetKubernetes(d.Id())
+	if err != nil {
+		if err.(*bcc.ApiError).Code() == 404 {
+			d.SetId("")
+			return nil, nil
+		} else {
+			return nil, fmt.Errorf("[ERROR-053]: err with getting kubernetes 'id': %s", err)
+		}
+	}
+
+	d.SetId(k8s.ID)
+
+	return []*schema.ResourceData{d}, nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/basis-cloud/bcc-go/bcc"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -30,9 +31,34 @@ func resourceLbaasPool() *schema.Resource {
 func resourceLbaasPoolCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 
-	lbaasId := d.Get("lbaas_id").(string)
+	type member struct {
+		Id     string `json:"id"`
+		Port   int    `json:"port"`
+		Weight int    `json:"weight"`
+	}
 
-	lbaas, err := manager.GetLoadBalancer(lbaasId)
+	config := &struct {
+		lbaasId            string
+		conlimit           int
+		cookieName         string
+		method             string
+		port               int
+		protocol           string
+		sessionPersistence string
+		members            []*member
+	}{
+		lbaasId:            d.Get("lbaas_id").(string),
+		conlimit:           d.Get("conlimit").(int),
+		cookieName:         d.Get("cookie_name").(string),
+		method:             d.Get("method").(string),
+		port:               d.Get("port").(int),
+		protocol:           d.Get("protocol").(string),
+		sessionPersistence: d.Get("session_persistence").(string),
+		members:            d.Get("member").([]*member),
+	}
+
+	lbaas, err := manager.GetLoadBalancer(config.lbaasId)
+	members := make([]*bcc.PoolMember, len(config.members))
 	if err != nil {
 		return diag.Errorf("id: Error getting Lbaas: %s", err)
 	}
@@ -40,22 +66,13 @@ func resourceLbaasPoolCreate(ctx context.Context, d *schema.ResourceData, meta i
 	membersCount := d.Get("member.#").(int)
 	members := make([]*bcc.PoolMember, membersCount)
 
-	for i := 0; i < membersCount; i++ {
-		memberPrefix := fmt.Sprint("member.", i)
-		member := d.Get(memberPrefix).(map[string]interface{})
-		vm_id := member["vm_id"].(string)
-		port := member["port"].(int)
-		weight := member["weight"].(int)
-
-		vm, err := manager.GetVm(vm_id)
+	for i, item := range config.members {
+		vm, err := manager.GetVm(item.Id)
 		if err != nil {
 			return diag.Errorf("vm_id: Error getting vm: %s", err)
 		}
 
-		newMember := bcc.NewLoadBalancerPoolMember(port, weight, vm)
-		if err != nil {
-			return diag.FromErr(err)
-		}
+		newMember := bcc.NewLoadBalancerPoolMember(item.Port, item.Weight, vm)
 		members[i] = &newMember
 	}
 
@@ -67,19 +84,22 @@ func resourceLbaasPoolCreate(ctx context.Context, d *schema.ResourceData, meta i
 		d.Get("method").(string),
 		d.Get("protocol").(string),
 		d.Get("session_persistence").(string),
+		config.method, config.protocol, config.sessionPersistence,
 	)
 	err = lbaas.CreatePool(&newPool)
 	if err != nil {
 		return diag.Errorf("id: Error creating Lbaas pool: %s", err)
 	}
-	lbaas.WaitLock()
+	if err = lbaas.WaitLock(); err != nil {
+		return diag.Errorf("[ERROR-050]: %s", err)
+	}
+
 	d.SetId(newPool.ID)
 	return resourceLbaasPoolRead(ctx, d, meta)
 }
 
 func resourceLbaasPoolRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (diagErr diag.Diagnostics) {
 	manager := meta.(*CombinedConfig).Manager()
-	lbaasPoolId := d.Id()
 	lbaasId := d.Get("lbaas_id").(string)
 
 	lbaas, err := manager.GetLoadBalancer(lbaasId)
@@ -87,7 +107,7 @@ func resourceLbaasPoolRead(ctx context.Context, d *schema.ResourceData, meta int
 		return diag.Errorf("id: Error getting Lbaas: %s", err)
 	}
 
-	pool, err := lbaas.GetLoadBalancerPool(lbaasPoolId)
+	lbaasPool, err := lbaas.GetLoadBalancerPool(d.Id())
 	if err != nil {
 		if err.(*bcc.ApiError).Code() == 404 {
 			d.SetId("")
@@ -97,15 +117,8 @@ func resourceLbaasPoolRead(ctx context.Context, d *schema.ResourceData, meta int
 		}
 	}
 
-	d.SetId(pool.ID)
-	d.Set("port", pool.Port)
-	d.Set("connlimit", pool.Connlimit)
-	d.Set("method", pool.Method)
-	d.Set("protocol", pool.Protocol)
-	d.Set("session_persistence", pool.SessionPersistence)
-
-	flattenedPools := make([]map[string]interface{}, len(pool.Members))
-	for i, member := range pool.Members {
+	flattenedPools := make([]map[string]interface{}, len(lbaasPool.Members))
+	for i, member := range lbaasPool.Members {
 		flattenedPools[i] = map[string]interface{}{
 			"id":     member.ID,
 			"port":   member.Port,
@@ -114,7 +127,20 @@ func resourceLbaasPoolRead(ctx context.Context, d *schema.ResourceData, meta int
 		}
 	}
 
-	d.Set("member", flattenedPools)
+	fields := map[string]interface{}{
+		"lbaas_id":            lbaas.ID,
+		"port":                lbaasPool.Port,
+		"connlimit":           lbaasPool.Connlimit,
+		"method":              lbaasPool.Method,
+		"protocol":            lbaasPool.Protocol,
+		"session_persistence": lbaasPool.SessionPersistence,
+		"members":             flattenedPools,
+		"cookie_name":         lbaas.Name,
+	}
+
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-050] crash via reading LbaasPool: %s", err)
+	}
 
 	return
 }
@@ -124,31 +150,31 @@ func resourceLbaasPoolUpdate(ctx context.Context, d *schema.ResourceData, meta i
 	lbaasPoolId := d.Id()
 	lbaasId := d.Get("lbaas_id").(string)
 
-	lbaas, err := manager.GetLoadBalancer(lbaasId)
+	lbaas, err := manager.GetLoadBalancer(d.Get("lbaas_id").(string))
 	if err != nil {
 		return diag.Errorf("id: Error getting Lbaas: %s", err)
 	}
 
-	pool, err := lbaas.GetLoadBalancerPool(lbaasPoolId)
+	lbaasPool, err := lbaas.GetLoadBalancerPool(d.Id())
 	if err != nil {
 		return diag.Errorf("Error getting LbaasPool: %s", err)
 	}
 
 	if d.HasChange("port") {
-		pool.Port = d.Get("port").(int)
+		lbaasPool.Port = d.Get("port").(int)
 	}
 	if d.HasChange("connlimit") {
-		pool.Connlimit = d.Get("connlimit").(int)
+		lbaasPool.Connlimit = d.Get("connlimit").(int)
 	}
 	if d.HasChange("method") {
-		pool.Method = d.Get("method").(string)
+		lbaasPool.Method = d.Get("method").(string)
 	}
 	if d.HasChange("protocol") {
-		pool.Protocol = d.Get("protocol").(string)
+		lbaasPool.Protocol = d.Get("protocol").(string)
 	}
 	if d.HasChange("session_persistence") {
 		sessionPersistence := d.Get("session_persistence").(string)
-		pool.SessionPersistence = &sessionPersistence
+		lbaasPool.SessionPersistence = &sessionPersistence
 	}
 	if d.HasChange("member") {
 		membersCount := d.Get("member.#").(int)
@@ -166,14 +192,11 @@ func resourceLbaasPoolUpdate(ctx context.Context, d *schema.ResourceData, meta i
 			}
 
 			newMember := bcc.NewLoadBalancerPoolMember(port, weight, vm)
-			if err != nil {
-				return diag.FromErr(err)
-			}
 			members[i] = &newMember
 		}
-		pool.Members = members
+		lbaasPool.Members = members
 	}
-	err = lbaas.UpdatePool(&pool)
+	err = lbaas.UpdatePool(&lbaasPool)
 	if err != nil {
 		return diag.Errorf("Error updating Lbaas pool: %s", err)
 	}
@@ -184,22 +207,19 @@ func resourceLbaasPoolUpdate(ctx context.Context, d *schema.ResourceData, meta i
 
 func resourceLbaasPoolDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	lbaasPoolId := d.Id()
-	lbaasId := d.Get("lbaas_id").(string)
 
-	lbaas, err := manager.GetLoadBalancer(lbaasId)
-	if err != nil {
-		return diag.Errorf("id: Error getting Lbaas: %s", err)
-	}
-
-	_, err = lbaas.GetLoadBalancerPool(lbaasPoolId)
+	lbaas, err := manager.GetLoadBalancer(d.Get("lbaas_id").(string))
 	if err != nil {
 		return diag.Errorf("Error getting LbaasPool: %s", err)
 	}
 
-	lbaas.DeletePool(lbaasPoolId)
+	_, err = lbaas.GetLoadBalancerPool(d.Id())
 	if err != nil {
-		return diag.Errorf("Error deleting LbaasPool: %s", err)
+		return diag.Errorf("[ERROR-050] crash via getting LbaasPool: %s", err)
+	}
+
+	if err := lbaas.DeletePool(d.Id()); err != nil {
+		return diag.Errorf("[ERROR-050] crash via getting LbaasPool: %s", err)
 	}
 	lbaas.WaitLock()
 

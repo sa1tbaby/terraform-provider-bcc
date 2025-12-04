@@ -63,9 +63,15 @@ func resourceFirewallTemplateRead(ctx context.Context, d *schema.ResourceData, m
 		}
 	}
 
-	d.SetId(firewallTemplate.ID)
-	d.Set("name", firewallTemplate.Name)
-	d.Set("tags", marshalTagNames(firewallTemplate.Tags))
+	fields := map[string]interface{}{
+		"name":   firewallTemplate.Name,
+		"tags":   marshalTagNames(firewallTemplate.Tags),
+		"vdc_id": firewallTemplate.Vdc.ID,
+	}
+
+	if err = setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-043]: crash via reading Firewall Template: %s", err)
+	}
 
 	return nil
 }

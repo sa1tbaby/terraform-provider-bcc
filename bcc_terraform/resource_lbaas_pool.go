@@ -62,14 +62,11 @@ func resourceLbaasPoolCreate(ctx context.Context, d *schema.ResourceData, meta i
 	if err != nil {
 		return diag.Errorf("id: Error getting Lbaas: %s", err)
 	}
-	// Get members
-	membersCount := d.Get("member.#").(int)
-	members := make([]*bcc.PoolMember, membersCount)
 
 	for i, item := range config.members {
 		vm, err := manager.GetVm(item.Id)
 		if err != nil {
-			return diag.Errorf("vm_id: Error getting vm: %s", err)
+			return diag.Errorf("[ERROR-050]: crash via getting vm by id: %s", err)
 		}
 
 		newMember := bcc.NewLoadBalancerPoolMember(item.Port, item.Weight, vm)
@@ -77,18 +74,13 @@ func resourceLbaasPoolCreate(ctx context.Context, d *schema.ResourceData, meta i
 	}
 
 	newPool := bcc.NewLoadBalancerPool(
-		*lbaas,
-		d.Get("port").(int),
-		d.Get("connlimit").(int),
-		members,
-		d.Get("method").(string),
-		d.Get("protocol").(string),
-		d.Get("session_persistence").(string),
+		*lbaas, config.port, config.conlimit, members,
 		config.method, config.protocol, config.sessionPersistence,
 	)
+
 	err = lbaas.CreatePool(&newPool)
 	if err != nil {
-		return diag.Errorf("id: Error creating Lbaas pool: %s", err)
+		return diag.Errorf("[ERROR-050]: crash via creating Lbaas pool: %s", err)
 	}
 	if err = lbaas.WaitLock(); err != nil {
 		return diag.Errorf("[ERROR-050]: %s", err)
@@ -104,7 +96,7 @@ func resourceLbaasPoolRead(ctx context.Context, d *schema.ResourceData, meta int
 
 	lbaas, err := manager.GetLoadBalancer(lbaasId)
 	if err != nil {
-		return diag.Errorf("id: Error getting Lbaas: %s", err)
+		return diag.Errorf("[ERROR-050]: crash via getting lbaas by id: %s", err)
 	}
 
 	lbaasPool, err := lbaas.GetLoadBalancerPool(d.Id())
@@ -113,7 +105,7 @@ func resourceLbaasPoolRead(ctx context.Context, d *schema.ResourceData, meta int
 			d.SetId("")
 			return nil
 		} else {
-			return diag.Errorf("Error getting LbaasPool: %s", err)
+			return diag.Errorf("[ERROR-050] crash via getting LbaasPool: %s", err)
 		}
 	}
 
@@ -147,17 +139,15 @@ func resourceLbaasPoolRead(ctx context.Context, d *schema.ResourceData, meta int
 
 func resourceLbaasPoolUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	lbaasPoolId := d.Id()
-	lbaasId := d.Get("lbaas_id").(string)
 
 	lbaas, err := manager.GetLoadBalancer(d.Get("lbaas_id").(string))
 	if err != nil {
-		return diag.Errorf("id: Error getting Lbaas: %s", err)
+		return diag.Errorf("[ERROR-050]: crash via getting lbaas by id: %s", err)
 	}
 
 	lbaasPool, err := lbaas.GetLoadBalancerPool(d.Id())
 	if err != nil {
-		return diag.Errorf("Error getting LbaasPool: %s", err)
+		return diag.Errorf("[ERROR-050] crash via getting LbaasPool: %s", err)
 	}
 
 	if d.HasChange("port") {
@@ -188,7 +178,7 @@ func resourceLbaasPoolUpdate(ctx context.Context, d *schema.ResourceData, meta i
 
 			vm, err := manager.GetVm(vm_id)
 			if err != nil {
-				return diag.Errorf("vm_id: Error getting vm: %s", err)
+				return diag.Errorf("[ERROR-050]: crash via getting vm by id: %s", err)
 			}
 
 			newMember := bcc.NewLoadBalancerPoolMember(port, weight, vm)
@@ -198,9 +188,11 @@ func resourceLbaasPoolUpdate(ctx context.Context, d *schema.ResourceData, meta i
 	}
 	err = lbaas.UpdatePool(&lbaasPool)
 	if err != nil {
-		return diag.Errorf("Error updating Lbaas pool: %s", err)
+		return diag.Errorf("[ERROR-050]: crash via updating Lbaas lbaasPool: %s", err)
 	}
-	lbaas.WaitLock()
+	if err = lbaas.WaitLock(); err != nil {
+		return diag.Errorf("[ERROR-050]: %s", err)
+	}
 
 	return resourceLbaasPoolRead(ctx, d, meta)
 }
@@ -210,7 +202,7 @@ func resourceLbaasPoolDelete(ctx context.Context, d *schema.ResourceData, meta i
 
 	lbaas, err := manager.GetLoadBalancer(d.Get("lbaas_id").(string))
 	if err != nil {
-		return diag.Errorf("Error getting LbaasPool: %s", err)
+		return diag.Errorf("[ERROR-050]: crash via getting lbaas by id: %s", err)
 	}
 
 	_, err = lbaas.GetLoadBalancerPool(d.Id())
@@ -223,8 +215,8 @@ func resourceLbaasPoolDelete(ctx context.Context, d *schema.ResourceData, meta i
 	}
 	lbaas.WaitLock()
 
+	log.Printf("[INFO-050] LbaasPool deleted, ID: %s", d.Get("lbaas_id").(string))
 	d.SetId("")
-	log.Printf("[INFO] LbaasPool deleted, ID: %s", lbaasId)
 
 	return nil
 }

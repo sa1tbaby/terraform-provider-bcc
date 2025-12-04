@@ -45,9 +45,9 @@ func resourceNetworkCreate(ctx context.Context, d *schema.ResourceData, meta int
 		return diag.Errorf("vdc_id: Error getting VDC: %s", err)
 	}
 
-	log.Printf("[DEBUG] subnetInfo: %#v", targetVdc)
 	network := bcc.NewNetwork(d.Get("name").(string))
 	network.Tags = unmarshalTagNames(d.Get("tags"))
+
 	if mtu, ok := d.GetOk("mtu"); ok {
 		mtuValue := mtu.(int)
 		network.Mtu = &mtuValue
@@ -103,6 +103,11 @@ func resourceNetworkRead(ctx context.Context, d *schema.ResourceData, meta inter
 		return diag.Errorf("subnets: Error getting subnets: %s", err)
 	}
 
+	subnets, err := network.GetSubnets()
+	if err != nil {
+		return diag.Errorf("[ERROR-009]: %s", err)
+	}
+
 	flattenedRecords := make([]map[string]interface{}, len(subnets))
 	for i, subnet := range subnets {
 		dnsStrings := make([]string, len(subnet.DnsServers))
@@ -120,8 +125,16 @@ func resourceNetworkRead(ctx context.Context, d *schema.ResourceData, meta inter
 		}
 	}
 
-	if err := d.Set("subnets", flattenedRecords); err != nil {
-		return diag.Errorf("subnets: unable to set `subnet` attribute: %s", err)
+	fields := map[string]interface{}{
+		"name":    network.Name,
+		"tags":    marshalTagNames(network.Tags),
+		"mtu":     network.Mtu,
+		"subnets": flattenedRecords,
+		"vdc_id":  network.Vdc.Id,
+	}
+
+	if err = setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-009]: %s", err)
 	}
 
 	return nil
@@ -186,14 +199,11 @@ func resourceNetworkDelete(ctx context.Context, d *schema.ResourceData, meta int
 	if err = repeatOnError(network.Delete, network); err != nil {
 		return diag.Errorf("Error deleting network: %s", err)
 	}
-	if err := network.WaitLock(); err != nil {
-		return diag.Errorf("Error waiting for network to become available: %s", err)
-	}
-
+	network.WaitLock()
 	return nil
 }
 
-func createSubnet(d *schema.ResourceData, manager *bcc.Manager) (diagErr diag.Diagnostics) {
+func createSubnet(d *schema.ResourceData, manager *bcc.Manager) (err error) {
 	subnets := d.Get("subnets").([]interface{})
 	log.Printf("[DEBUG] subnets: %#v", subnets)
 	network, err := manager.GetNetwork(d.Id())
@@ -206,10 +216,10 @@ func createSubnet(d *schema.ResourceData, manager *bcc.Manager) (diagErr diag.Di
 		subnetInfo2 := subnetInfo.(map[string]interface{})
 
 		// Create subnet
-		subnet := bcc.NewSubnet(subnetInfo2["cidr"].(string), subnetInfo2["gateway"].(string), subnetInfo2["start_ip"].(string), subnetInfo2["end_ip"].(string), subnetInfo2["dhcp"].(bool))
-
-		if err := network.CreateSubnet(&subnet); err != nil {
-			return diag.Errorf("subnets: Error creating subnet: %s", err)
+		subnet := bcc.NewSubnet(subnetInfo2["cidr"].(string), subnetInfo2["gateway"].(string),
+			subnetInfo2["start_ip"].(string), subnetInfo2["end_ip"].(string), subnetInfo2["dhcp"].(bool))
+		if err = network.CreateSubnet(&subnet); err != nil {
+			return fmt.Errorf("[ERROR-009]: %s", err)
 		}
 
 		dnsServersList := subnetInfo2["dns"].([]interface{})
@@ -231,8 +241,6 @@ func createSubnet(d *schema.ResourceData, manager *bcc.Manager) (diagErr diag.Di
 }
 
 func updateSubnet(d *schema.ResourceData, manager *bcc.Manager) (diagErr diag.Diagnostics) {
-
-	subnets := d.Get("subnets").([]interface{})
 	network, err := manager.GetNetwork(d.Id())
 	if err != nil {
 		return diag.Errorf("id: Unable to get network: %s", err)
@@ -243,6 +251,7 @@ func updateSubnet(d *schema.ResourceData, manager *bcc.Manager) (diagErr diag.Di
 		return diag.Errorf("subnets: Unable to get subnets: %s", err)
 	}
 
+	subnets := d.Get("subnets").([]interface{})
 	for _, subnetInfo := range subnets {
 		subnetInfo2 := subnetInfo.(map[string]interface{})
 		var subnet *bcc.Subnet
@@ -263,9 +272,10 @@ func updateSubnet(d *schema.ResourceData, manager *bcc.Manager) (diagErr diag.Di
 			newSubnet := bcc.NewSubnet(subnetInfo2["cidr"].(string), subnetInfo2["gateway"].(string), subnetInfo2["start_ip"].(string), subnetInfo2["end_ip"].(string), subnetInfo2["dhcp"].(bool))
 			if err := network.CreateSubnet(&newSubnet); err != nil {
 				return diag.Errorf("subnets: Error creating subnet: %s", err)
+				subnetInfo2["start_ip"].(string), subnetInfo2["end_ip"].(string), subnetInfo2["dhcp"].(bool))
 			}
-			if err := newSubnet.UpdateDNSServers(newDnsServers); err != nil {
-				return diag.Errorf("dns: Error Update DNS Servers: %s", err)
+			if err = newSubnet.UpdateDNSServers(newDnsServers); err != nil {
+				return diag.Errorf("[ERROR-009]: %s", err)
 			}
 		} else {
 			// update preserved subnet

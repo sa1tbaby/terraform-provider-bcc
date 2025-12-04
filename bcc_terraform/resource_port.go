@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 
-	"fmt"
 	"time"
 
 	"github.com/basis-cloud/bcc-go/bcc"
@@ -96,8 +95,20 @@ func resourcePortRead(ctx context.Context, d *schema.ResourceData, meta interfac
 			return diag.Errorf("id: Error getting port: %s", err)
 		}
 	}
+	firewalls := make([]*string, len(port.FirewallTemplates))
+	for i, firewall := range port.FirewallTemplates {
+		firewalls[i] = &firewall.ID
+	}
 
-	if err = setPortResourceData(d, port); err != nil {
+	fields := map[string]interface{}{
+		"ip_address":         port.IpAddress,
+		"network_id":         port.Network.ID,
+		"vdc_id":             port.Network.Vdc.Id,
+		"tags":               marshalTagNames(port.Tags),
+		"firewall_templates": firewalls,
+	}
+
+	if err = setResourceDataFromMap(d, fields); err != nil {
 		return diag.Errorf("crash via setting resource data: %s", err)
 	}
 
@@ -110,7 +121,7 @@ func resourcePortUpdate(ctx context.Context, d *schema.ResourceData, meta interf
 	portId := d.Id()
 	port, err := manager.GetPort(portId)
 	if err != nil {
-		return diag.Errorf("id: Error getting port: %s", err)
+		return diag.Errorf("[ERROR-053]: %s", err)
 	}
 	if d.HasChange("tags") {
 		port.Tags = unmarshalTagNames(d.Get("tags"))
@@ -177,37 +188,7 @@ func resourcePortImport(ctx context.Context, d *schema.ResourceData, meta interf
 		}
 	}
 
-	if err = setPortResourceData(d, port); err != nil {
-		return nil, err
-	}
-	if err = d.Set("vdc_id", port.Network.Vdc.Id); err != nil {
-		return nil, err
-	}
-
-	return []*schema.ResourceData{d}, nil
-}
-
-func setPortResourceData(d *schema.ResourceData, port *bcc.Port) (err error) {
 	d.SetId(port.ID)
 
-	firewalls := make([]*string, len(port.FirewallTemplates))
-	for i, firewall := range port.FirewallTemplates {
-		firewalls[i] = &firewall.ID
-	}
-
-	fields := map[string]interface{}{
-		"firewall_templates": firewalls,
-		"ip_address":         port.IpAddress,
-		"network_id":         port.Network,
-		"tags":               marshalTagNames(port.Tags),
-	}
-
-	for key, value := range fields {
-		if err = d.Set(key, value); err != nil {
-			return fmt.Errorf("crash via setting %s: %w", key, err)
-		}
-	}
-
-	return nil
-
+	return []*schema.ResourceData{d}, nil
 }

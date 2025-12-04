@@ -21,7 +21,7 @@ func resourceFirewallTemplate() *schema.Resource {
 		UpdateContext: resourceFirewallTemplateUpdate,
 		DeleteContext: resourceFirewallTemplateDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceFirewallTemplateImport,
 		},
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(10 * time.Minute),
@@ -110,4 +110,17 @@ func resourceFirewallTemplateDelete(ctx context.Context, d *schema.ResourceData,
 	}
 
 	return nil
+}
+
+func resourceFirewallTemplateImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	manager := meta.(*CombinedConfig).Manager()
+
+	firewallTemplate, err := manager.GetFirewallTemplate(d.Id())
+	if err != nil {
+		return nil, fmt.Errorf("[ERROR-043]: crash via getting Firewall Template by id=%s: %s", d.Id(), err)
+	}
+
+	d.SetId(firewallTemplate.ID)
+
+	return []*schema.ResourceData{d}, nil
 }

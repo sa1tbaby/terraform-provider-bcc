@@ -2,6 +2,7 @@ package bcc_terraform
 
 import (
 	"context"
+	"fmt"
 	"log"
 
 	"github.com/basis-cloud/bcc-go/bcc"
@@ -31,7 +32,7 @@ func resourceLbaasCreate(ctx context.Context, d *schema.ResourceData, meta inter
 
 	vdc, err := GetVdcById(d, manager)
 	if err != nil {
-		return diag.Errorf("vdc_id: Error getting vdc : %s", err)
+		return diag.Errorf("[ERROR-049]: crash via getting VDC: %s", err)
 	}
 
 	config := struct {
@@ -51,6 +52,7 @@ func resourceLbaasCreate(ctx context.Context, d *schema.ResourceData, meta inter
 		VdcId:      d.Get("vdc_id").(string),
 		Tags:       unmarshalTagNames(d.Get("tags")),
 	}
+
 	portPrefix := "port.0"
 	ipAddressStr := d.Get(MakePrefix(&portPrefix, "ip_address")).(string)
 
@@ -61,14 +63,13 @@ func resourceLbaasCreate(ctx context.Context, d *schema.ResourceData, meta inter
 
 	network, err := manager.GetNetwork(config.Port["network_id"].(string))
 	if err != nil {
-		return diag.Errorf("network_id: Error getting network by id: %s", err)
+		return diag.Errorf("[ERROR-049]: crash via getting network by id=%s: %s", config.Port["network_id"].(string), err)
 	}
 	if err = network.WaitLock(); err != nil {
 		diag.Errorf("[ERROR-049]: crash via wait lock for network")
 	}
 
 	firewalls := make([]*bcc.FirewallTemplate, 0)
-	ipAddressStr := d.Get(MakePrefix(&portPrefix, "ip_address")).(string)
 	if ipAddressStr == "" {
 		ipAddressStr = "0.0.0.0"
 	}
@@ -79,9 +80,12 @@ func resourceLbaasCreate(ctx context.Context, d *schema.ResourceData, meta inter
 
 	err = vdc.CreateLoadBalancer(&newLbaas)
 	if err != nil {
-		return diag.Errorf("Error creating Lbaas: %s", err)
+		return diag.Errorf("[ERROR-049]: crash via creating Lbaas: %s", err)
 	}
-	newLbaas.WaitLock()
+	if err = newLbaas.WaitLock(); err != nil {
+		diag.Errorf("[ERROR-049]: crash via wait lock for lbaas")
+	}
+
 	d.SetId(newLbaas.ID)
 	return resourceLbaasRead(ctx, d, meta)
 }
@@ -94,16 +98,10 @@ func resourceLbaasRead(ctx context.Context, d *schema.ResourceData, meta interfa
 			d.SetId("")
 			return nil
 		} else {
-			return diag.Errorf("id: Error getting Lbaas: %s", err)
+			return diag.Errorf("[ERROR-049]: crash via getting Lbaas by 'id'=%s: %s", d.Id(), err)
 		}
 	}
-	d.SetId(lbaas.ID)
-	d.Set("name", lbaas.Name)
-	d.Set("floating", lbaas.Floating != nil)
-	d.Set("floating_ip", "")
-	if lbaas.Floating != nil {
-		d.Set("floating_ip", lbaas.Floating.IpAddress)
-	}
+
 	lbaasPort := make([]interface{}, 1)
 	lbaasPort[0] = map[string]interface{}{
 		"ip_address": lbaas.Port.IpAddress,
@@ -133,7 +131,7 @@ func resourceLbaasUpdate(ctx context.Context, d *schema.ResourceData, meta inter
 	manager := meta.(*CombinedConfig).Manager()
 	lbaas, err := manager.GetLoadBalancer(d.Id())
 	if err != nil {
-		return diag.Errorf("id: Error getting Lbaas: %s", err)
+		return diag.Errorf("[ERROR-049]: crash via getting Lbaas by 'id'=%s: %s", d.Id(), err)
 	}
 	if d.HasChange("name") {
 		lbaas.Name = d.Get("name").(string)
@@ -155,30 +153,31 @@ func resourceLbaasUpdate(ctx context.Context, d *schema.ResourceData, meta inter
 		lbaas.Port.IpAddress = &ipAddress
 	}
 	if err := repeatOnError(lbaas.Update, lbaas); err != nil {
-		return diag.Errorf("Error updating lbaas: %s", err)
+		return diag.Errorf("[ERROR-049]: crash via updating lbaas: %s", err)
 	}
-	lbaas.WaitLock()
+	if err = lbaas.WaitLock(); err != nil {
+		diag.Errorf("[ERROR-049]: crash via wait lock for lbaas")
+	}
 
 	return resourceLbaasRead(ctx, d, meta)
 }
 
 func resourceLbaasDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	lbaasId := d.Id()
 
+	lbaasId := d.Id()
 	lbaas, err := manager.GetLoadBalancer(lbaasId)
 	if err != nil {
-		return diag.Errorf("id: Error getting Lbaas: %s", err)
+		return diag.Errorf("[ERROR-049]: crash via getting Lbaas by 'id'=%s: %s", d.Id(), err)
 	}
 
-	lbaas.Delete()
-	if err != nil {
-		return diag.Errorf("Error deleting Lbaas: %s", err)
+	if err = lbaas.Delete(); err != nil {
+		return diag.Errorf("[ERROR-049]: crash via deleting lbaas: %s", err)
 	}
 	lbaas.WaitLock()
 
 	d.SetId("")
-	log.Printf("[INFO] Lbaas deleted, ID: %s", lbaasId)
+	log.Printf("[INFO-049] Lbaas deleted, ID: %s", lbaasId)
 
 	return nil
 }

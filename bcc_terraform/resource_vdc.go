@@ -21,7 +21,7 @@ func resourceVdc() *schema.Resource {
 		UpdateContext: resourceVdcUpdate,
 		DeleteContext: resourceVdcDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceVdcImport,
 		},
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(10 * time.Minute),
@@ -201,17 +201,26 @@ func resourceVdcDelete(ctx context.Context, d *schema.ResourceData, meta interfa
 	manager := meta.(*CombinedConfig).Manager()
 	vdc, err := manager.GetVdc(d.Id())
 	if err != nil {
-		return diag.Errorf("[ERROR-006] id: Error getting vdc: %s", err)
+		return diag.Errorf("[ERROR-006]: %s", err)
 	}
 
-	err = vdc.Delete()
-	if err != nil {
-		return diag.Errorf("[ERROR-006] Error deleting vdc: %s", err)
+	if err = vdc.Delete(); err != nil {
+		return diag.Errorf("[ERROR-006]: %s", err)
 	}
-
-	if err = vdc.WaitLock(); err != nil {
-		return diag.Errorf("[ERROR-006] Error locking vdc: %s", err)
-	}
+	vdc.WaitLock()
 
 	return nil
+}
+
+func resourceVdcImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	manager := meta.(*CombinedConfig).Manager()
+
+	vdc, err := manager.GetVdc(d.Id())
+	if err != nil {
+		d.SetId("")
+		return nil, fmt.Errorf("[ERROR-006] id: Error getting vdc: %s", err)
+	}
+
+	d.SetId(vdc.ID)
+	return []*schema.ResourceData{d}, nil
 }

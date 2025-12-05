@@ -2,6 +2,7 @@ package bcc_terraform
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -43,12 +44,12 @@ func resourceVdcCreate(ctx context.Context, d *schema.ResourceData, meta interfa
 
 	targetProject, err := manager.GetProject(d.Get("project_id").(string))
 	if err != nil {
-		return diag.Errorf("[ERROR-006] project_id: Error getting project: %s", err)
+		return diag.Errorf("[ERROR-006]: %s", err)
 	}
 
 	targetHypervisor, err := GetHypervisorById(d, manager, targetProject)
 	if err != nil {
-		return diag.Errorf("[ERROR-006] hypervisor_id: Error getting Hypervisor: %s", err)
+		return diag.Errorf("[ERROR-006]: %s", err)
 	}
 
 	vdc := bcc.NewVdc(d.Get("name").(string), targetHypervisor)
@@ -56,30 +57,26 @@ func resourceVdcCreate(ctx context.Context, d *schema.ResourceData, meta interfa
 
 	// if we creating multiple vdc at once, there are need some time to get new vnid
 	f := func() error { return targetProject.CreateVdc(&vdc) }
-	err = repeatOnError(f, targetProject)
-
-	if err != nil {
-		return diag.Errorf("[ERROR-006] Error creating vdc: %s", err)
+	if err = repeatOnError(f, targetProject); err != nil {
+		return diag.Errorf("[ERROR-006]: crash via creating vdc: %s", err)
 	}
 
 	if err = vdc.WaitLock(); err != nil {
-		return diag.Errorf("[ERROR-006] Error waiting for vdc to become available: %s", err)
+		return diag.Errorf("[ERROR-006]: %s", err)
 	}
-
 	if mtu, ok := d.GetOk("default_network_mtu"); ok {
 		networks, err := vdc.GetNetworks(bcc.Arguments{"defaults_only": "true"})
 		if err != nil {
-			return diag.Errorf("[ERROR-006] Error getting vdc networks: %s", err)
+			return diag.Errorf("[ERROR-006]: %s", err)
 		}
 		if len(networks) != 1 {
-			return diag.Errorf("[ERROR-006] Expected 1 network, got %d networks", len(networks))
+			return diag.Errorf("[ERROR-006]: expected 1 network, got %d networks", len(networks))
 		}
 		network := networks[0]
 		mtuValue := mtu.(int)
 		network.Mtu = &mtuValue
-		err = network.Update()
-		if err != nil {
-			return diag.Errorf("[ERROR-006] Error updating vdc default network: %s", err)
+		if err = network.Update(); err != nil {
+			return diag.Errorf("[ERROR-006]: %s", err)
 		}
 	}
 
@@ -103,15 +100,16 @@ func resourceVdcRead(ctx context.Context, d *schema.ResourceData, meta interface
 	}
 	networks, err := vdc.GetNetworks(bcc.Arguments{"defaults_only": "true"})
 	if err != nil {
-		return diag.Errorf("[ERROR-006] error getting default network: %s", err)
+		return diag.Errorf("[ERROR-006]: %s", err)
 	}
 	if len(networks) != 1 {
-		return diag.Errorf("[ERROR-006] expected 1 default network, receive %d default networks", len(networks))
+		return diag.Errorf("[ERROR-006]: expected 1 network, got %d networks", len(networks))
 	}
 	network := networks[0]
+
 	subnets, err := network.GetSubnets()
 	if err != nil {
-		return diag.Errorf("[ERROR-006] subnets: Error getting subnets: %s", err)
+		return diag.Errorf("[ERROR-006]: %s", err)
 	}
 
 	flattenedSubnets := make([]map[string]interface{}, len(subnets))

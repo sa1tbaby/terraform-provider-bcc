@@ -21,7 +21,7 @@ func resourceS3Storage() *schema.Resource {
 		UpdateContext: resourceS3StorageUpdate,
 		DeleteContext: resourceS3StorageDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceS3StorageImport,
 		},
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(10 * time.Minute),
@@ -90,14 +90,19 @@ func resourceS3StorageRead(ctx context.Context, d *schema.ResourceData, meta int
 		}
 	}
 
-	d.SetId(S3Storage.ID)
-	d.Set("name", S3Storage.Name)
-	d.Set("backend", S3Storage.Backend)
-	d.Set("project", S3Storage.Project.ID)
-	d.Set("client_endpoint", S3Storage.ClientEndpoint)
-	d.Set("secret_key", S3Storage.SecretKey)
-	d.Set("access_key", S3Storage.AccessKey)
-	d.Set("tags", marshalTagNames(S3Storage.Tags))
+	fields := map[string]interface{}{
+		"name":            s3Storage.Name,
+		"backend":         s3Storage.Backend,
+		"project_id":      s3Storage.Project.ID,
+		"client_endpoint": s3Storage.ClientEndpoint,
+		"secret_key":      s3Storage.SecretKey,
+		"access_key":      s3Storage.AccessKey,
+		"tags":            marshalTagNames(s3Storage.Tags),
+	}
+
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-051]: %s3Storage", err)
+	}
 
 	return nil
 }
@@ -120,4 +125,17 @@ func resourceS3StorageDelete(ctx context.Context, d *schema.ResourceData, meta i
 	log.Printf("[INFO] S3Storage deleted, ID: %s", s3_id)
 
 	return nil
+}
+
+func resourceS3StorageImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	manager := meta.(*CombinedConfig).Manager()
+	S3Storage, err := manager.GetS3Storage(d.Id())
+	if err != nil {
+		d.SetId("")
+		return nil, fmt.Errorf("[ERROR-051]: crash via getting S3Storage by 'id'=%s: %s", d.Id(), err)
+	}
+
+	d.SetId(S3Storage.ID)
+
+	return []*schema.ResourceData{d}, nil
 }

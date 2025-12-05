@@ -2,8 +2,10 @@ package bcc_terraform
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/basis-cloud/bcc-go/bcc"
@@ -22,7 +24,7 @@ func resourceS3StorageBucket() *schema.Resource {
 		UpdateContext: resourceS3StorageBucketUpdate,
 		DeleteContext: resourceS3StorageBucketDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceS3StorageImport,
 		},
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(10 * time.Minute),
@@ -32,18 +34,18 @@ func resourceS3StorageBucket() *schema.Resource {
 	}
 }
 
-var re_for_name = regexp.MustCompile(`^[A-z0-9\-]+$`)
+var reForName = regexp.MustCompile(`^[A-z0-9\-]+$`)
 
 func resourceS3StorageBucketCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	s3_id := d.Get("s3_storage_id").(string)
 
-	s3, err := manager.GetS3Storage(s3_id)
+	s3Id := d.Get("s3_storage_id").(string)
+	s3, err := manager.GetS3Storage(s3Id)
 	if err != nil {
 		return diag.Errorf("id: Error getting S3Storage: %s", err)
 	}
 	var S3StorageBucket bcc.S3StorageBucket
-	if len(re_for_name.FindStringSubmatch(d.Get("name").(string))) > 0 {
+	if len(reForName.FindStringSubmatch(d.Get("name").(string))) > 0 {
 		S3StorageBucket = bcc.NewS3StorageBucket(d.Get("name").(string))
 	} else {
 		return diag.Errorf("name: Wrong name format should be A-z, 1-0 and `-`")
@@ -62,9 +64,9 @@ func resourceS3StorageBucketCreate(ctx context.Context, d *schema.ResourceData, 
 
 func resourceS3StorageBucketUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	s3_id := d.Get("s3_storage_id").(string)
+	s3Id := d.Get("s3_storage_id").(string)
 
-	s3, err := manager.GetS3Storage(s3_id)
+	s3, err := manager.GetS3Storage(s3Id)
 	if err != nil {
 		return diag.Errorf("id: Error getting S3Storage: %s", err)
 	}
@@ -74,7 +76,7 @@ func resourceS3StorageBucketUpdate(ctx context.Context, d *schema.ResourceData, 
 		return diag.Errorf("id: Error getting S3StorageBucket: %s", err)
 	}
 	if d.HasChange("name") {
-		if len(re_for_name.FindStringSubmatch(d.Get("name").(string))) > 0 {
+		if len(reForName.FindStringSubmatch(d.Get("name").(string))) > 0 {
 			bucket.Name = d.Get("name").(string)
 		} else {
 			return diag.Errorf("name: Wrong name format should be A-z, 1-0 and `-`")
@@ -92,9 +94,9 @@ func resourceS3StorageBucketUpdate(ctx context.Context, d *schema.ResourceData, 
 
 func resourceS3StorageBucketRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	s3_id := d.Get("s3_storage_id").(string)
+	s3Id := d.Get("s3_storage_id").(string)
 
-	s3, err := manager.GetS3Storage(s3_id)
+	s3, err := manager.GetS3Storage(s3Id)
 	if err != nil {
 		return diag.Errorf("id: Error getting S3Storage: %s", err)
 	}
@@ -109,18 +111,24 @@ func resourceS3StorageBucketRead(ctx context.Context, d *schema.ResourceData, me
 		}
 	}
 
-	d.SetId(bucket.ID)
-	d.Set("name", bucket.Name)
-	d.Set("external_name", bucket.ExternalName)
+	fields := map[string]interface{}{
+		"s_3_storage_id": s3.ID,
+		"bucket_name":    bucket.Name,
+		"external_name":  bucket.ExternalName,
+	}
+
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-052]: crash via reading S3StorageBucket: %bucket", err)
+	}
 
 	return nil
 }
 
 func resourceS3StorageBucketDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	s3_id := d.Get("s3_storage_id").(string)
 
-	s3, err := manager.GetS3Storage(s3_id)
+	s3Id := d.Get("s3_storage_id").(string)
+	s3, err := manager.GetS3Storage(s3Id)
 	if err != nil {
 		return diag.Errorf("id: Error getting S3Storage: %s", err)
 	}
@@ -139,4 +147,30 @@ func resourceS3StorageBucketDelete(ctx context.Context, d *schema.ResourceData, 
 	log.Printf("[INFO] S3StorageBucket deleted, ID: %s", s3_id)
 
 	return nil
+}
+
+func resourceS3StorageBucketImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	manager := meta.(*CombinedConfig).Manager()
+
+	id := d.Id()
+	ids := strings.Split(id, ",")
+
+	s3, err := manager.GetS3Storage(ids[0])
+	if err != nil {
+		d.SetId("")
+		return nil, fmt.Errorf("[ERROR-052]: crash via getting S3Storage by 'id'=%s: %s", ids[0], err)
+	}
+
+	bucket, err := s3.GetBucket(ids[1])
+	if err != nil {
+		d.SetId("")
+		return nil, fmt.Errorf("[ERROR-052]: crash via getting S3StorageBucket by 'id'=%s: %s", ids[1], err)
+	}
+
+	d.SetId(bucket.ID)
+	if err = d.Set("s3_storage_id", s3.ID); err != nil {
+		return nil, fmt.Errorf("[ERROR-052]: crash via setting 's3_storage_id'=%s: %s", s3.ID, err)
+	}
+
+	return []*schema.ResourceData{d}, nil
 }

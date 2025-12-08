@@ -128,9 +128,10 @@ func resourceVdcRead(ctx context.Context, d *schema.ResourceData, meta interface
 			"dns":      dnsStrings,
 		}
 	}
-	flattenedVdc := map[string]interface{}{
+	fields := map[string]interface{}{
 		"name":                    vdc.Name,
 		"project_id":              vdc.Project.ID,
+		"hypervisor_id":           vdc.Hypervisor.ID,
 		"default_network_id":      network.ID,
 		"default_network_name":    network.Name,
 		"default_network_subnets": flattenedSubnets,
@@ -138,7 +139,7 @@ func resourceVdcRead(ctx context.Context, d *schema.ResourceData, meta interface
 		"tags":                    marshalTagNames(vdc.Tags),
 	}
 
-	if err := setResourceDataFromMap(d, flattenedVdc); err != nil {
+	if err := setResourceDataFromMap(d, fields); err != nil {
 		return diag.FromErr(err)
 	}
 

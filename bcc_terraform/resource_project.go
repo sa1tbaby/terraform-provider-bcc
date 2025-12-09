@@ -2,6 +2,7 @@ package bcc_terraform
 
 import (
 	"context"
+	"fmt"
 	"log"
 
 	"github.com/basis-cloud/bcc-go/bcc"
@@ -80,9 +81,14 @@ func resourceProjectRead(ctx context.Context, d *schema.ResourceData, meta inter
 		}
 	}
 
-	d.SetId(project.ID)
-	d.Set("name", project.Name)
-	d.Set("tags", marshalTagNames(project.Tags))
+	fields := map[string]interface{}{
+		"name": project.Name,
+		"tags": marshalTagNames(project.Tags),
+	}
+
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.FromErr(err)
+	}
 
 	return nil
 }

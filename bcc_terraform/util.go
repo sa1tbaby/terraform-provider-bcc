@@ -396,6 +396,15 @@ func GetVdcById(d *schema.ResourceData, manager *bcc.Manager) (*bcc.Vdc, error) 
 	return vdc, nil
 }
 
+func GetVdcByVal(vdcId string, manager *bcc.Manager) (*bcc.Vdc, error) {
+	vdc, err := manager.GetVdc(vdcId)
+	if err != nil {
+		return nil, errors.Wrapf(err, "VDC with id '%s' not found", vdcId)
+	}
+
+	return vdc, nil
+}
+
 func GetVmByName(d *schema.ResourceData, manager *bcc.Manager, vdc *bcc.Vdc) (*bcc.Vm, error) {
 	vmName := d.Get("name")
 	vms, err := vdc.GetVms(bcc.Arguments{"name": vmName.(string)})

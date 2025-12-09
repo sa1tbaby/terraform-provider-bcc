@@ -55,11 +55,6 @@ func (args *Arguments) injectResultListRouter() {
 
 func (args *Arguments) injectCreateRouter() {
 	args.merge(Arguments{
-		"id": {
-			Type:        schema.TypeString,
-			Computed:    true,
-			Description: "Id of the Router",
-		},
 		"name": {
 			Type:     schema.TypeString,
 			Optional: true,
@@ -100,6 +95,7 @@ func (args *Arguments) injectCreateRouter() {
 			Type:        schema.TypeBool,
 			Optional:    true,
 			Default:     false,
+			Deprecated:  "param has been removed",
 			Description: "Determinate if router is system.",
 		},
 		"tags": newTagNamesResourceSchema("tags of the router"),

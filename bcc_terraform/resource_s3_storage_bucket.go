@@ -2,8 +2,10 @@ package bcc_terraform
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/basis-cloud/bcc-go/bcc"
@@ -32,71 +34,71 @@ func resourceS3StorageBucket() *schema.Resource {
 	}
 }
 
-var re_for_name = regexp.MustCompile(`^[A-z0-9\-]+$`)
+var reForName = regexp.MustCompile(`^[A-z0-9\-]+$`)
 
 func resourceS3StorageBucketCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	s3_id := d.Get("s3_storage_id").(string)
 
-	s3, err := manager.GetS3Storage(s3_id)
+	s3Id := d.Get("s3_storage_id").(string)
+	s3, err := manager.GetS3Storage(s3Id)
 	if err != nil {
-		return diag.Errorf("id: Error getting S3Storage: %s", err)
+		return diag.Errorf("[ERROR-052]: crash via getting S3Storage by 'id'=%s: %s", s3Id, err)
 	}
+
 	var S3StorageBucket bcc.S3StorageBucket
-	if len(re_for_name.FindStringSubmatch(d.Get("name").(string))) > 0 {
+	if len(reForName.FindStringSubmatch(d.Get("name").(string))) > 0 {
 		S3StorageBucket = bcc.NewS3StorageBucket(d.Get("name").(string))
 	} else {
-		return diag.Errorf("name: Wrong name format should be A-z, 1-0 and `-`")
+		return diag.Errorf("[ERROR-052]: wrong name format should be A-z, 1-0 and `-`")
 	}
 
 	err = s3.CreateBucket(&S3StorageBucket)
 	if err != nil {
-		return diag.Errorf("Error creating S3StorageBucket: %s", err)
+		return diag.Errorf("[ERROR-052]: crash via creating S3StorageBucket: %s", err)
 	}
 
 	d.SetId(S3StorageBucket.ID)
-	log.Printf("[INFO] S3StorageBucket created, ID: %s", d.Id())
+	log.Printf("[INFO-052] S3StorageBucket created, ID: %s", d.Id())
 
 	return resourceS3StorageBucketRead(ctx, d, meta)
 }
 
 func resourceS3StorageBucketUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	s3_id := d.Get("s3_storage_id").(string)
+	s3Id := d.Get("s3_storage_id").(string)
 
-	s3, err := manager.GetS3Storage(s3_id)
+	s3, err := manager.GetS3Storage(s3Id)
 	if err != nil {
-		return diag.Errorf("id: Error getting S3Storage: %s", err)
+		return diag.Errorf("[ERROR-052]: crash via getting S3Storage by 'id'=%s: %s", s3Id, err)
 	}
 
 	bucket, err := s3.GetBucket(d.Id())
 	if err != nil {
-		return diag.Errorf("id: Error getting S3StorageBucket: %s", err)
+		return diag.Errorf("[ERROR-052]: crash via getting S3StorageBucket by 'id'=%s: %s", d.Id(), err)
 	}
 	if d.HasChange("name") {
-		if len(re_for_name.FindStringSubmatch(d.Get("name").(string))) > 0 {
+		if len(reForName.FindStringSubmatch(d.Get("name").(string))) > 0 {
 			bucket.Name = d.Get("name").(string)
 		} else {
-			return diag.Errorf("name: Wrong name format should be A-z, 1-0 and `-`")
+			return diag.Errorf("[ERROR-052]: wrong name format should be A-z, 1-0 and `-`")
 		}
 	}
 
-	err = bucket.Update()
-	if err != nil {
-		return diag.Errorf("Error updating S3StorageBucket: %s", err)
+	if err = bucket.Update(); err != nil {
+		return diag.Errorf("[ERROR-052]: crash via updating S3StorageBucket: %s", err)
 	}
-	log.Printf("[INFO] S3StorageBucket updated, ID: %s", d.Id())
+	log.Printf("[INFO-052] S3StorageBucket updated, ID: %s", d.Id())
 
 	return resourceS3StorageBucketRead(ctx, d, meta)
 }
 
 func resourceS3StorageBucketRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	s3_id := d.Get("s3_storage_id").(string)
+	s3Id := d.Get("s3_storage_id").(string)
 
-	s3, err := manager.GetS3Storage(s3_id)
+	s3, err := manager.GetS3Storage(s3Id)
 	if err != nil {
-		return diag.Errorf("id: Error getting S3Storage: %s", err)
+		return diag.Errorf("[ERROR-052]: crash via getting S3Storage by 'id'=%bucket: %bucket", s3Id, err)
 	}
 
 	bucket, err := s3.GetBucket(d.Id())
@@ -105,38 +107,43 @@ func resourceS3StorageBucketRead(ctx context.Context, d *schema.ResourceData, me
 			d.SetId("")
 			return nil
 		} else {
-			return diag.Errorf("id: Error getting S3StorageBucket: %s", err)
+			return diag.Errorf("[ERROR-052]: crash via getting S3StorageBucket by 'id'=%bucket: %bucket", d.Id(), err)
 		}
 	}
 
-	d.SetId(bucket.ID)
-	d.Set("name", bucket.Name)
-	d.Set("external_name", bucket.ExternalName)
+	fields := map[string]interface{}{
+		"s_3_storage_id": s3.ID,
+		"bucket_name":    bucket.Name,
+		"external_name":  bucket.ExternalName,
+	}
+
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-052]: crash via reading S3StorageBucket: %bucket", err)
+	}
 
 	return nil
 }
 
 func resourceS3StorageBucketDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	s3_id := d.Get("s3_storage_id").(string)
 
-	s3, err := manager.GetS3Storage(s3_id)
+	s3Id := d.Get("s3_storage_id").(string)
+	s3, err := manager.GetS3Storage(s3Id)
 	if err != nil {
-		return diag.Errorf("id: Error getting S3Storage: %s", err)
+		return diag.Errorf("[ERROR-052]: crash via getting S3Storage by 'id'=%s: %s", s3Id, err)
 	}
 
 	bucket, err := s3.GetBucket(d.Id())
 	if err != nil {
-		return diag.Errorf("id: Error getting S3StorageBucket: %s", err)
+		return diag.Errorf("[ERROR-052]: crash via getting S3StorageBucket by 'id'=%s: %s", d.Id(), err)
 	}
 
-	err = bucket.Delete()
-	if err != nil {
-		return diag.Errorf("Error deleting S3StorageBucket: %s", err)
+	if err = bucket.Delete(); err != nil {
+		return diag.Errorf("[ERROR-052]: crash via deleting S3StorageBucket: %s", err)
 	}
 
 	d.SetId("")
-	log.Printf("[INFO] S3StorageBucket deleted, ID: %s", s3_id)
+	log.Printf("[INFO] S3StorageBucket deleted, ID: %s", s3Id)
 
 	return nil
 }

@@ -14,9 +14,10 @@ func dataSourcePaasTemplate() *schema.Resource {
 		ReadContext: dataSourcePaasTemplateRead,
 		Schema: map[string]*schema.Schema{
 			"id": {
-				Type:        schema.TypeInt,
+				Type:        schema.TypeString,
 				Optional:    true,
-				Description: "id of Paas Template",
+				Computed:    true,
+				Description: "id of the Paas Template",
 			},
 			"vdc_id": {
 				Type:        schema.TypeString,

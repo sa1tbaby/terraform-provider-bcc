@@ -90,15 +90,9 @@ func (args *Arguments) injectCreateNetwork() {
 					},
 					"dns": {
 						Type:     schema.TypeList,
-						Required: true,
+						Optional: true,
 						Elem: &schema.Schema{
 							Type: schema.TypeString,
-							ValidateDiagFunc: validation.ToDiagFunc(
-								validation.All(
-									validation.StringIsNotEmpty,
-									validation.StringLenBetween(1, 100),
-								),
-							),
 						},
 						Description: "dns servers list",
 					},

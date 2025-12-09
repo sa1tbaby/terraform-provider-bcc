@@ -2,6 +2,7 @@ package bcc_terraform
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -34,8 +35,9 @@ func resourceDnsRecord() *schema.Resource {
 
 func resourceDnsRecordCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	dns_id := d.Get("dns_id").(string)
-	dns, err := manager.GetDns(dns_id)
+
+	dnsId := d.Get("dns_id").(string)
+	dns, err := manager.GetDns(dnsId)
 	if err != nil {
 		return diag.Errorf("vdc_id: Error getting Dns: %s", err)
 	}
@@ -70,8 +72,10 @@ func resourceDnsRecordCreate(ctx context.Context, d *schema.ResourceData, meta i
 
 func resourceDnsRecordUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	dns_id := d.Get("dns_id").(string)
-	dns, err := manager.GetDns(dns_id)
+
+	dnsId := d.Get("dns_id").(string)
+	dns, err := manager.GetDns(dnsId)
+
 	if err != nil {
 		return diag.Errorf("id: Error getting Dns: %s", err)
 	}
@@ -117,13 +121,19 @@ func resourceDnsRecordUpdate(ctx context.Context, d *schema.ResourceData, meta i
 
 func resourceDnsRecordRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	dns_id := d.Get("dns_id").(string)
-	dns, err := manager.GetDns(dns_id)
+
+	dnsId := d.Get("dns_id").(string)
+	dns, err := manager.GetDns(dnsId)
 	if err != nil {
-		return diag.Errorf("id: Error getting Dns: %s", err)
+		if err.(*bcc.ApiError).Code() == 404 {
+			d.SetId("")
+			return nil
+		} else {
+			return diag.Errorf("id: Error getting Dns: %s", err)
+		}
 	}
-	dns_record_id := d.Id()
-	dnsRecord, err := dns.GetDnsRecord(dns_record_id)
+
+	dnsRecord, err := dns.GetDnsRecord(d.Id())
 	if err != nil {
 		if err.(*bcc.ApiError).Code() == 404 {
 			d.SetId("")
@@ -133,24 +143,30 @@ func resourceDnsRecordRead(ctx context.Context, d *schema.ResourceData, meta int
 		}
 	}
 
-	d.SetId(dnsRecord.ID)
-	d.Set("dns_id", dns_id)
-	d.Set("data", dnsRecord.Data)
-	d.Set("flag", dnsRecord.Flag)
-	d.Set("host", dnsRecord.Host)
-	d.Set("port", dnsRecord.Port)
-	d.Set("priority", dnsRecord.Priority)
-	d.Set("tag", dnsRecord.Tag)
-	d.Set("ttl", dnsRecord.Ttl)
-	d.Set("type", dnsRecord.Type)
-	d.Set("weight", dnsRecord.Weight)
+	fields := map[string]interface{}{
+		"dns_id":   d.Get("dns_id").(string),
+		"data":     dnsRecord.Data,
+		"flag":     dnsRecord.Flag,
+		"host":     dnsRecord.Host,
+		"port":     dnsRecord.Port,
+		"priority": dnsRecord.Priority,
+		"tag":      dnsRecord.Tag,
+		"ttl":      dnsRecord.Ttl,
+		"type":     dnsRecord.Type,
+		"weight":   dnsRecord.Weight,
+	}
+
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.FromErr(err)
+	}
+
 	return nil
 }
 
 func resourceDnsRecordDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	dns_id := d.Get("dns_id").(string)
-	dns, err := manager.GetDns(dns_id)
+	dnsId := d.Get("dns_id").(string)
+	dns, err := manager.GetDns(dnsId)
 	if err != nil {
 		return diag.Errorf("id: Error getting Dns: %s", err)
 	}

@@ -22,7 +22,7 @@ func resourceVm() *schema.Resource {
 		UpdateContext: resourceVmUpdate,
 		DeleteContext: resourceVmDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceVmImport,
 		},
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(10 * time.Minute),
@@ -128,6 +128,19 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 	log.Printf("[INFO] VM created, ID: %s", d.Id())
 
 	return resourceVmRead(ctx, d, meta)
+}
+
+func resourceVmImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	manager := meta.(*CombinedConfig).Manager()
+
+	vm, err := manager.GetVm(d.Id())
+	if err != nil {
+		return nil, err
+	}
+
+	d.SetId(vm.ID)
+
+	return []*schema.ResourceData{d}, nil
 }
 
 func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {

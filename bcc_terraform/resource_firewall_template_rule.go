@@ -24,7 +24,7 @@ func resourceFirewallRule() *schema.Resource {
 		UpdateContext: resourceFirewallRuleUpdate,
 		DeleteContext: resourceFirewallRuleDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceFirewallImport,
 		},
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(10 * time.Minute),
@@ -177,4 +177,33 @@ func setUpRule(rule *bcc.FirewallRule, d *schema.ResourceData) (err error) {
 	}
 
 	return nil
+}
+
+func resourceFirewallImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	manager := meta.(*CombinedConfig).Manager()
+
+	id := d.Id()
+	ids := strings.Split(id, ",")
+
+	firewall, err := manager.GetFirewallTemplate(ids[0])
+	if err != nil {
+		return nil, fmt.Errorf("[ERROR-048}: crash via getting Firewall Template by id=%s: %s", ids[0], err)
+	}
+
+	firewallRule, err := firewall.GetRuleById(ids[1])
+	if err != nil {
+		if err.(*bcc.ApiError).Code() == 404 {
+			d.SetId("")
+			return nil, nil
+		} else {
+			return nil, fmt.Errorf("[ERROR-048]: crash via getting fierwall Rule by id=%s: %s", ids[1], err)
+		}
+	}
+
+	d.SetId(firewallRule.ID)
+	if err = d.Set("firewall_id", firewall.ID); err != nil {
+		return nil, fmt.Errorf("[ERROR-048]: error setting firewall_id: %s", err)
+	}
+
+	return []*schema.ResourceData{d}, nil
 }

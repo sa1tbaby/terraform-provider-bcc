@@ -20,7 +20,7 @@ func resourceDns() *schema.Resource {
 		ReadContext:   resourceDnsRead,
 		DeleteContext: resourceDnsDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceDnsImport,
 		},
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(10 * time.Minute),
@@ -88,3 +88,5 @@ func resourceDnsDelete(ctx context.Context, d *schema.ResourceData, meta interfa
 
 	return nil
 }
+
+	manager := meta.(*CombinedConfig).Manager()

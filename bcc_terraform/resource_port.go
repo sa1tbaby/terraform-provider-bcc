@@ -23,7 +23,7 @@ func resourcePort() *schema.Resource {
 		UpdateContext: resourcePortUpdate,
 		DeleteContext: resourcePortDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourcePortImport,
 		},
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(10 * time.Minute),
@@ -161,4 +161,21 @@ func resourcePortDelete(ctx context.Context, d *schema.ResourceData, meta interf
 	d.SetId("")
 	log.Printf("[INFO] Port deleted, ID: %s", portId)
 	return nil
+}
+
+func resourcePortImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	manager := meta.(*CombinedConfig).Manager()
+	port, err := manager.GetPort(d.Id())
+	if err != nil {
+		if err.(*bcc.ApiError).Code() == 404 {
+			d.SetId("")
+			return nil, err
+		} else {
+			return nil, err
+		}
+	}
+
+	d.SetId(port.ID)
+
+	return []*schema.ResourceData{d}, nil
 }

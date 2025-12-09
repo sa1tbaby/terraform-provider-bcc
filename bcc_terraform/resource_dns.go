@@ -2,6 +2,7 @@ package bcc_terraform
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 func resourceDns() *schema.Resource {
 	args := Defaults()
 	args.injectCreateDns()
+	args.injectContextProjectById()
 
 	return &schema.Resource{
 		CreateContext: resourceDnsCreate,
@@ -32,44 +34,53 @@ func resourceDns() *schema.Resource {
 
 func resourceDnsCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
+
 	project, err := GetProjectById(d, manager)
 	if err != nil {
-		return diag.Errorf("project_id: Error getting Project: %s", err)
+		return diag.Errorf("[ERROR-046]: crash via getting Projecct by 'id': %s", err)
 	}
+
 	name := d.Get("name").(string)
-	newDns := bcc.NewDns(name)
 	if !strings.HasSuffix(name, ".") {
-		return diag.Errorf("name: must be ending by '.'")
+		return diag.Errorf("[ERROR-046]: 'name' must be ending by '.'")
 	}
+
+	newDns := bcc.NewDns(name)
 	newDns.Tags = unmarshalTagNames(d.Get("tags"))
 
 	err = project.CreateDns(&newDns)
 	if err != nil {
-		return diag.Errorf("Error creating Dns: %s", err)
+		return diag.Errorf("[ERROR-046]: creating Dns: %s", err)
 	}
 
 	d.SetId(newDns.ID)
-	log.Printf("[INFO] Dns created, ID: %s", d.Id())
+	log.Printf("[INFO-046]: Dns created, ID: %s", d.Id())
 
 	return resourceDnsRead(ctx, d, meta)
 }
 
 func resourceDnsRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	Dns, err := manager.GetDns(d.Id())
+
+	dns, err := manager.GetDns(d.Id())
 	if err != nil {
 		if err.(*bcc.ApiError).Code() == 404 {
 			d.SetId("")
 			return nil
 		} else {
-			return diag.Errorf("id: Error getting Dns: %s", err)
+			return diag.Errorf("[ERROR-046]: crash via getting Dns: %s", err)
 		}
 	}
 
-	d.SetId(Dns.ID)
-	d.Set("name", Dns.Name)
-	d.Set("project", Dns.Project.ID)
-	d.Set("tags", marshalTagNames(Dns.Tags))
+	fields := map[string]interface{}{
+		"name":       dns.Name,
+		"project_id": dns.Project.ID,
+		"tags":       unmarshalTagNames(dns.Tags),
+	}
+
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-046]: crash via setting resource data: %s", err)
+	}
 
 	return nil
 }
@@ -78,15 +89,26 @@ func resourceDnsDelete(ctx context.Context, d *schema.ResourceData, meta interfa
 	manager := meta.(*CombinedConfig).Manager()
 	dns, err := manager.GetDns(d.Id())
 	if err != nil {
-		return diag.Errorf("id: Error getting Dns: %s", err)
+		return diag.Errorf("[ERROR-046]: crash via getting Dns by 'id': %s", err)
 	}
 
 	err = dns.Delete()
 	if err != nil {
-		return diag.Errorf("Error deleting Dns: %s", err)
+		return diag.Errorf("[ERROR-046]: crash via deleting Dns: %s", err)
 	}
 
 	return nil
 }
 
+func resourceDnsImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 	manager := meta.(*CombinedConfig).Manager()
+
+	dns, err := manager.GetDns(d.Id())
+	if err != nil {
+		return nil, fmt.Errorf("[ERROR-046]: crash via getting Dns: %s", err)
+	}
+
+	d.SetId(dns.ID)
+
+	return []*schema.ResourceData{d}, nil
+}

@@ -19,7 +19,7 @@ func resourceProject() *schema.Resource {
 		UpdateContext: resourceProjectUpdate,
 		DeleteContext: resourceProjectDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceProjectImport,
 		},
 		Schema: args,
 	}
@@ -132,4 +132,17 @@ func resourceProjectDelete(ctx context.Context, d *schema.ResourceData, meta int
 	log.Printf("[INFO] Project deleted, ID: %s", projectId)
 
 	return nil
+}
+
+func resourceProjectImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	manager := meta.(*CombinedConfig).Manager()
+	project, err := manager.GetProject(d.Id())
+	if err != nil {
+		d.SetId("")
+		return nil, fmt.Errorf("id: Error getting project: %s", err)
+	}
+
+	d.SetId(project.ID)
+
+	return []*schema.ResourceData{d}, nil
 }

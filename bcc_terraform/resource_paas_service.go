@@ -17,7 +17,7 @@ func resourcePaasService() *schema.Resource {
 		UpdateContext: resourcePaasServiceUpdate,
 		DeleteContext: resourcePaasServiceDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourcePaasServiceImport,
 		},
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(10 * time.Minute),
@@ -182,4 +182,46 @@ func resourcePaasServiceDelete(ctx context.Context, d *schema.ResourceData, meta
 	}
 	service.WaitLock()
 	return nil
+}
+
+func resourcePaasServiceImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	manager := meta.(*CombinedConfig).Manager()
+	manager = manager.WithContext(ctx)
+
+	service, err := manager.GetPaasService(d.Id())
+	if err != nil {
+		return nil, fmt.Errorf("Error getting Paas Service: %s", err)
+	}
+	if err := ensureLocationCreated(service.Vdc.ID, manager); err != nil {
+		return nil, err
+	}
+
+	d.SetId(service.ID)
+	d.Set("vdc_id", service.Vdc.ID)
+
+	return []*schema.ResourceData{d}, nil
+}
+
+func ensureLocationCreated(vdcId string, manager *bcc.Manager) error {
+	vdc, err := manager.GetVdc(vdcId)
+	if err != nil {
+		return err
+	}
+	if vdc.Paas != nil {
+		return nil
+	}
+	err = manager.CreatePaasLocation(vdcId)
+	if err != nil {
+		return err
+	}
+	for {
+		vdc, err := manager.GetVdc(vdcId)
+		if err != nil {
+			return err
+		}
+		if vdc.Paas != nil && !vdc.Paas.Locked {
+			return nil
+		}
+		time.Sleep(time.Second)
+	}
 }

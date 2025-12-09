@@ -21,7 +21,7 @@ func resourceS3Storage() *schema.Resource {
 		UpdateContext: resourceS3StorageUpdate,
 		DeleteContext: resourceS3StorageDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceS3StorageImport,
 		},
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(10 * time.Minute),
@@ -120,4 +120,17 @@ func resourceS3StorageDelete(ctx context.Context, d *schema.ResourceData, meta i
 	log.Printf("[INFO] S3Storage deleted, ID: %s", s3_id)
 
 	return nil
+}
+
+func resourceS3StorageImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	manager := meta.(*CombinedConfig).Manager()
+	S3Storage, err := manager.GetS3Storage(d.Id())
+	if err != nil {
+		d.SetId("")
+		return nil, fmt.Errorf("[ERROR-051]: crash via getting S3Storage by 'id'=%s: %s", d.Id(), err)
+	}
+
+	d.SetId(S3Storage.ID)
+
+	return []*schema.ResourceData{d}, nil
 }

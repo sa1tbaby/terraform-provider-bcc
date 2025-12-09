@@ -22,7 +22,7 @@ func resourceS3StorageBucket() *schema.Resource {
 		UpdateContext: resourceS3StorageBucketUpdate,
 		DeleteContext: resourceS3StorageBucketDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceS3StorageBucketImport,
 		},
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(10 * time.Minute),
@@ -139,4 +139,30 @@ func resourceS3StorageBucketDelete(ctx context.Context, d *schema.ResourceData, 
 	log.Printf("[INFO] S3StorageBucket deleted, ID: %s", s3_id)
 
 	return nil
+}
+
+func resourceS3StorageBucketImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	manager := meta.(*CombinedConfig).Manager()
+
+	id := d.Id()
+	ids := strings.Split(id, ",")
+
+	s3, err := manager.GetS3Storage(ids[0])
+	if err != nil {
+		d.SetId("")
+		return nil, fmt.Errorf("[ERROR-052]: crash via getting S3Storage by 'id'=%s: %s", ids[0], err)
+	}
+
+	bucket, err := s3.GetBucket(ids[1])
+	if err != nil {
+		d.SetId("")
+		return nil, fmt.Errorf("[ERROR-052]: crash via getting S3StorageBucket by 'id'=%s: %s", ids[1], err)
+	}
+
+	d.SetId(bucket.ID)
+	if err = d.Set("s3_storage_id", s3.ID); err != nil {
+		return nil, fmt.Errorf("[ERROR-052]: crash via setting 's3_storage_id'=%s: %s", s3.ID, err)
+	}
+
+	return []*schema.ResourceData{d}, nil
 }

@@ -22,7 +22,7 @@ func resourceDisk() *schema.Resource {
 		UpdateContext: resourceDiskUpdate,
 		DeleteContext: resourceDiskDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceDiskImport,
 		},
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(10 * time.Minute),
@@ -164,4 +164,17 @@ func resourceDiskDelete(ctx context.Context, d *schema.ResourceData, meta interf
 	disk.WaitLock()
 
 	return nil
+}
+
+func resourceDiskImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	manager := meta.(*CombinedConfig).Manager()
+
+	disk, err := manager.GetDisk(d.Id())
+	if err != nil {
+		return nil, fmt.Errorf("[ERROR-014]: crash via getting disk: %s", err)
+	}
+
+	d.SetId(disk.ID)
+
+	return []*schema.ResourceData{d}, nil
 }

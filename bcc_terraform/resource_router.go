@@ -23,7 +23,7 @@ func resourceRouter() *schema.Resource {
 		UpdateContext: resourceRouterUpdate,
 		DeleteContext: resourceRouterDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceRouterImport,
 		},
 		Schema: args,
 	}
@@ -111,6 +111,21 @@ func resourceRouterUpdate(ctx context.Context, d *schema.ResourceData, meta inte
 	router.WaitLock()
 
 	return resourceRouterRead(ctx, d, meta)
+}
+
+func resourceRouterImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	manager := meta.(*CombinedConfig).Manager()
+
+	router, err := manager.GetRouter(d.Id())
+	if err != nil {
+		d.SetId("")
+		return nil, err
+	}
+
+	d.SetId(router.ID)
+
+	return []*schema.ResourceData{d}, nil
+
 }
 
 func resourceRouterDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {

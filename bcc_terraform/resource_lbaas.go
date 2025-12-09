@@ -20,7 +20,7 @@ func resourceLbaas() *schema.Resource {
 		UpdateContext: resourceLbaasUpdate,
 		DeleteContext: resourceLbaasDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceLbaasImport,
 		},
 		Schema: args,
 	}
@@ -148,4 +148,20 @@ func resourceLbaasDelete(ctx context.Context, d *schema.ResourceData, meta inter
 	log.Printf("[INFO] Lbaas deleted, ID: %s", lbaasId)
 
 	return nil
+}
+
+func resourceLbaasImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	manager := meta.(*CombinedConfig).Manager()
+	lbaas, err := manager.GetLoadBalancer(d.Id())
+	if err != nil {
+		if err.(*bcc.ApiError).Code() == 404 {
+			d.SetId("")
+			return nil, fmt.Errorf("[ERROR-049]: Lbaas not found")
+		} else {
+			return nil, fmt.Errorf("[ERROR-049]: crash via getting Lbaas by 'id'=%s: %s", d.Id(), err)
+		}
+	}
+
+	d.SetId(lbaas.ID)
+	return []*schema.ResourceData{d}, nil
 }

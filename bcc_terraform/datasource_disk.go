@@ -12,7 +12,7 @@ func dataSourceDisk() *schema.Resource {
 	args := Defaults()
 	args.injectContextVdcById()
 	args.injectResultDisk()
-	args.injectContextGetDisk() // override name
+	args.injectContextGetDisk()
 
 	return &schema.Resource{
 		ReadContext: dataSourceDiskRead,

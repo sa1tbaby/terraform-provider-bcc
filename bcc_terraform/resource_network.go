@@ -2,6 +2,7 @@ package bcc_terraform
 
 import (
 	"context"
+	"fmt"
 	"log"
 
 	"github.com/basis-cloud/bcc-go/bcc"
@@ -23,6 +24,17 @@ func resourceNetwork() *schema.Resource {
 			StateContext: resourceNetworkImport,
 		},
 		Schema: args,
+		CustomizeDiff: func(ctx context.Context, d *schema.ResourceDiff, m interface{}) error {
+			if d.Id() != "" {
+				if d.HasChange("subnets.0.cidr") {
+					oldNet, newNet := d.GetChange("subnets.0.cidr")
+					if oldNet.(string) != newNet.(string) {
+						return fmt.Errorf("[ERROR-009]: changing 'cidr' attribute is not supported")
+					}
+				}
+			}
+			return nil
+		},
 	}
 }
 
@@ -30,30 +42,34 @@ func resourceNetworkCreate(ctx context.Context, d *schema.ResourceData, meta int
 	manager := meta.(*CombinedConfig).Manager()
 	targetVdc, err := GetVdcById(d, manager)
 	if err != nil {
-		return diag.Errorf("vdc_id: Error getting VDC: %s", err)
+		return diag.Errorf("[ERROR-009]: %s", err)
 	}
 
-	log.Printf("[DEBUG] subnetInfo: %#v", targetVdc)
 	network := bcc.NewNetwork(d.Get("name").(string))
 	network.Tags = unmarshalTagNames(d.Get("tags"))
+
 	if mtu, ok := d.GetOk("mtu"); ok {
 		mtuValue := mtu.(int)
 		network.Mtu = &mtuValue
 	} else {
 		network.Mtu = nil
 	}
-	targetVdc.WaitLock()
+
+	if err = targetVdc.WaitLock(); err != nil {
+		return diag.Errorf("[ERROR-009]: %s", err)
+	}
 	if err = targetVdc.CreateNetwork(&network); err != nil {
-		return diag.Errorf("Error creating network: %s", err)
+		return diag.Errorf("[ERROR-009]: %s", err)
 	}
+
+	if err = createSubnet(d, manager); err != nil {
+		return diag.Errorf("[ERROR-009]: %s", err)
+	}
+	if err = network.WaitLock(); err != nil {
+		return diag.Errorf("[ERROR-009]: %s", err)
+	}
+
 	d.SetId(network.ID)
-
-	diag := createSubnet(d, manager)
-	if diag != nil {
-		return diag
-	}
-	network.WaitLock()
-
 	log.Printf("[INFO] Network created, ID: %s", d.Id())
 
 	return resourceNetworkRead(ctx, d, meta)
@@ -67,17 +83,13 @@ func resourceNetworkRead(ctx context.Context, d *schema.ResourceData, meta inter
 			d.SetId("")
 			return nil
 		} else {
-			return diag.Errorf("id: Error getting network: %s", err)
+			return diag.Errorf("[ERROR-009]: crash via getting network-%s: %s", d.Id(), err)
 		}
 	}
 
-	d.Set("name", network.Name)
-	d.Set("tags", marshalTagNames(network.Tags))
-	d.Set("mtu", network.Mtu)
-
 	subnets, err := network.GetSubnets()
 	if err != nil {
-		return diag.Errorf("subnets: Error getting subnets: %s", err)
+		return diag.Errorf("[ERROR-009]: %s", err)
 	}
 
 	flattenedRecords := make([]map[string]interface{}, len(subnets))
@@ -97,29 +109,39 @@ func resourceNetworkRead(ctx context.Context, d *schema.ResourceData, meta inter
 		}
 	}
 
-	if err := d.Set("subnets", flattenedRecords); err != nil {
-		return diag.Errorf("subnets: unable to set `subnet` attribute: %s", err)
+	fields := map[string]interface{}{
+		"name":    network.Name,
+		"tags":    marshalTagNames(network.Tags),
+		"mtu":     network.Mtu,
+		"subnets": flattenedRecords,
+		"vdc_id":  network.Vdc.Id,
+	}
+
+	if err = setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-009]: %s", err)
 	}
 
 	return nil
 }
 
 func resourceNetworkUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+
 	manager := meta.(*CombinedConfig).Manager()
 
 	network, err := manager.GetNetwork(d.Id())
 	if err != nil {
-		return diag.Errorf("id: Error getting network: %s", err)
+		return diag.Errorf("[ERROR-009]: %s", err)
 	}
-	shouldUpdate := false
+	needUpdate := false
+
 	if d.HasChange("tags") {
 		network.Tags = unmarshalTagNames(d.Get("tags"))
-		shouldUpdate = true
+		needUpdate = true
 	}
 
 	if d.HasChange("name") {
 		network.Name = d.Get("name").(string)
-		shouldUpdate = true
+		needUpdate = true
 	}
 	if d.HasChange("mtu") {
 		if mtu, ok := d.GetOk("mtu"); ok {
@@ -128,12 +150,12 @@ func resourceNetworkUpdate(ctx context.Context, d *schema.ResourceData, meta int
 		} else {
 			network.Mtu = nil
 		}
-		shouldUpdate = true
+		needUpdate = true
 	}
-	if shouldUpdate {
-		err := network.Update()
+	if needUpdate {
+		err = network.Update()
 		if err != nil {
-			return diag.Errorf("name: Error update network: %s", err)
+			return diag.Errorf("[ERROR-009]: %s", err)
 		}
 	}
 
@@ -143,7 +165,9 @@ func resourceNetworkUpdate(ctx context.Context, d *schema.ResourceData, meta int
 			return diagErr
 		}
 	}
-	network.WaitLock()
+	if err = network.WaitLock(); err != nil {
+		return diag.Errorf("[ERROR-009]: %s", err)
+	}
 
 	return resourceNetworkRead(ctx, d, meta)
 }
@@ -152,24 +176,22 @@ func resourceNetworkDelete(ctx context.Context, d *schema.ResourceData, meta int
 	manager := meta.(*CombinedConfig).Manager()
 	network, err := manager.GetNetwork(d.Id())
 	if err != nil {
-		return diag.Errorf("id: Error getting network: %s", err)
-
+		return diag.Errorf("[ERROR-009]: %s", err)
 	}
 
 	if err = repeatOnError(network.Delete, network); err != nil {
-		return diag.Errorf("Error deleting network: %s", err)
+		return diag.Errorf("[ERROR-009]: crash via deleting network-%s: %s", d.Id(), err)
 	}
 	network.WaitLock()
-
 	return nil
 }
 
-func createSubnet(d *schema.ResourceData, manager *bcc.Manager) (diagErr diag.Diagnostics) {
+func createSubnet(d *schema.ResourceData, manager *bcc.Manager) (err error) {
 	subnets := d.Get("subnets").([]interface{})
 	log.Printf("[DEBUG] subnets: %#v", subnets)
 	network, err := manager.GetNetwork(d.Id())
 	if err != nil {
-		return diag.Errorf("id: Unable to get network: %s", err)
+		return fmt.Errorf("[ERROR-009]: %s", err)
 	}
 
 	for _, subnetInfo := range subnets {
@@ -177,21 +199,23 @@ func createSubnet(d *schema.ResourceData, manager *bcc.Manager) (diagErr diag.Di
 		subnetInfo2 := subnetInfo.(map[string]interface{})
 
 		// Create subnet
-		subnet := bcc.NewSubnet(subnetInfo2["cidr"].(string), subnetInfo2["gateway"].(string), subnetInfo2["start_ip"].(string), subnetInfo2["end_ip"].(string), subnetInfo2["dhcp"].(bool))
-
-		if err := network.CreateSubnet(&subnet); err != nil {
-			return diag.Errorf("subnets: Error creating subnet: %s", err)
+		subnet := bcc.NewSubnet(subnetInfo2["cidr"].(string), subnetInfo2["gateway"].(string),
+			subnetInfo2["start_ip"].(string), subnetInfo2["end_ip"].(string), subnetInfo2["dhcp"].(bool))
+		if err = network.CreateSubnet(&subnet); err != nil {
+			return fmt.Errorf("[ERROR-009]: %s", err)
 		}
 
 		dnsServersList := subnetInfo2["dns"].([]interface{})
-		dnsServers := make([]*bcc.SubnetDNSServer, len(dnsServersList))
-		for i, dns := range dnsServersList {
-			s1 := bcc.NewSubnetDNSServer(dns.(string))
-			dnsServers[i] = &s1
-		}
+		if len(dnsServersList) > 0 {
+			dnsServers := make([]*bcc.SubnetDNSServer, len(dnsServersList))
+			for i, dns := range dnsServersList {
+				s1 := bcc.NewSubnetDNSServer(dns.(string))
+				dnsServers[i] = &s1
+			}
 
-		if err := subnet.UpdateDNSServers(dnsServers); err != nil {
-			return diag.Errorf("dns: Error Update DNS Servers: %s", err)
+			if err = subnet.UpdateDNSServers(dnsServers); err != nil {
+				return fmt.Errorf("[ERROR-009]: %s", err)
+			}
 		}
 
 	}
@@ -200,17 +224,17 @@ func createSubnet(d *schema.ResourceData, manager *bcc.Manager) (diagErr diag.Di
 }
 
 func updateSubnet(d *schema.ResourceData, manager *bcc.Manager) (diagErr diag.Diagnostics) {
-
-	subnets := d.Get("subnets").([]interface{})
 	network, err := manager.GetNetwork(d.Id())
 	if err != nil {
-		return diag.Errorf("id: Unable to get network: %s", err)
-	}
-	subnetsRaw, err := network.GetSubnets()
-	if err != nil {
-		return diag.Errorf("subnets: Unable to get subnets: %s", err)
+		return diag.Errorf("[ERROR-009]: %s", err)
 	}
 
+	subnetsRaw, err := network.GetSubnets()
+	if err != nil {
+		return diag.Errorf("[ERROR-009]: %s", err)
+	}
+
+	subnets := d.Get("subnets").([]interface{})
 	for _, subnetInfo := range subnets {
 		subnetInfo2 := subnetInfo.(map[string]interface{})
 		var subnet *bcc.Subnet
@@ -228,18 +252,19 @@ func updateSubnet(d *schema.ResourceData, manager *bcc.Manager) (diagErr diag.Di
 		}
 		if subnet == nil {
 			// create new subnet
-			newSubnet := bcc.NewSubnet(subnetInfo2["cidr"].(string), subnetInfo2["gateway"].(string), subnetInfo2["start_ip"].(string), subnetInfo2["end_ip"].(string), subnetInfo2["dhcp"].(bool))
-			if err := network.CreateSubnet(&newSubnet); err != nil {
-				return diag.Errorf("subnets: Error creating subnet: %s", err)
+			newSubnet := bcc.NewSubnet(subnetInfo2["cidr"].(string), subnetInfo2["gateway"].(string),
+				subnetInfo2["start_ip"].(string), subnetInfo2["end_ip"].(string), subnetInfo2["dhcp"].(bool))
+			if err = network.CreateSubnet(&newSubnet); err != nil {
+				return diag.Errorf("[ERROR-009]: %s", err)
 			}
-			if err := subnet.UpdateDNSServers(newDnsServers); err != nil {
-				return diag.Errorf("dns: Error Update DNS Servers: %s", err)
+			if err = newSubnet.UpdateDNSServers(newDnsServers); err != nil {
+				return diag.Errorf("[ERROR-009]: %s", err)
 			}
 		} else {
 			// update preserved subnet
 			shouldUpdate := false
 			if subnet.Gateway != subnetInfo2["gateway"] {
-				return diag.Errorf("You cannot change gateway")
+				return diag.Errorf("[ERROR-009]: You cannot change gateway")
 			}
 			if subnet.StartIp != subnetInfo2["start_ip"] || subnet.EndIp != subnetInfo2["end_ip"] || subnet.IsDHCP != subnetInfo2["dhcp"] {
 				subnet.EndIp = subnetInfo2["end_ip"].(string)
@@ -260,8 +285,8 @@ func updateSubnet(d *schema.ResourceData, manager *bcc.Manager) (diagErr diag.Di
 				}
 			}
 			if shouldUpdate {
-				if err := subnet.UpdateDNSServers(subnet.DnsServers); err != nil {
-					return diag.Errorf("error update subnet: %s", err)
+				if err = subnet.UpdateDNSServers(subnet.DnsServers); err != nil {
+					return diag.Errorf("[ERROR-009]: %s", err)
 				}
 			}
 		}
@@ -277,7 +302,7 @@ func updateSubnet(d *schema.ResourceData, manager *bcc.Manager) (diagErr diag.Di
 		if subnetInfo2 == nil {
 			// delete obsolete subnet
 			if err := subnet.Delete(); err != nil {
-				return diag.Errorf("error deleting subnet: %s", err)
+				return diag.Errorf("[ERROR-009]: %s", err)
 			}
 		}
 	}

@@ -66,11 +66,6 @@ func (args *Arguments) injectResultListFirewallTemplate() {
 
 func (args *Arguments) injectCreateFirewallTemplate() {
 	args.merge(Arguments{
-		"id": {
-			Type:        schema.TypeString,
-			Computed:    true,
-			Description: "id of the firewall template",
-		},
 		"name": {
 			Type:     schema.TypeString,
 			Required: true,

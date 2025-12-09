@@ -2,6 +2,7 @@ package bcc_terraform
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -35,18 +36,19 @@ func resourceFirewallTemplateCreate(ctx context.Context, d *schema.ResourceData,
 	manager := meta.(*CombinedConfig).Manager()
 	targetVdc, err := GetVdcById(d, manager)
 	if err != nil {
-		return diag.Errorf("vdc_id: Error getting VDC: %s", err)
+		return diag.Errorf("[ERROR-043]: crash via getting VDC by id: %s", err)
 	}
 
 	newFirewallTemplate := bcc.NewFirewallTemplate(d.Get("name").(string))
 	newFirewallTemplate.Tags = unmarshalTagNames(d.Get("tags"))
+
 	err = targetVdc.CreateFirewallTemplate(&newFirewallTemplate)
 	if err != nil {
-		return diag.Errorf("Error creating Firewall Template: %s", err)
+		return diag.Errorf("[ERROR-043]: crash via creating Firewall Template: %s", err)
 	}
 
 	d.SetId(newFirewallTemplate.ID)
-	log.Printf("[INFO] FirewallTemplate created, ID: %s", d.Id())
+	log.Printf("[INFO-043]: firewallTemplate created, ID: %s", d.Id())
 
 	return resourceFirewallTemplateRead(ctx, d, meta)
 }
@@ -59,13 +61,19 @@ func resourceFirewallTemplateRead(ctx context.Context, d *schema.ResourceData, m
 			d.SetId("")
 			return nil
 		} else {
-			return diag.Errorf("id: Error getting Firewall Template: %s", err)
+			return diag.Errorf("[ERROR-043]: crash via getting Firewall Template by id=%s: %s", d.Id(), err)
 		}
 	}
 
-	d.SetId(firewallTemplate.ID)
-	d.Set("name", firewallTemplate.Name)
-	d.Set("tags", marshalTagNames(firewallTemplate.Tags))
+	fields := map[string]interface{}{
+		"name":   firewallTemplate.Name,
+		"tags":   marshalTagNames(firewallTemplate.Tags),
+		"vdc_id": firewallTemplate.Vdc.ID,
+	}
+
+	if err = setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-043]: crash via reading Firewall Template: %s", err)
+	}
 
 	return nil
 }
@@ -75,7 +83,7 @@ func resourceFirewallTemplateUpdate(ctx context.Context, d *schema.ResourceData,
 
 	firewallTemplate, err := manager.GetFirewallTemplate(d.Id())
 	if err != nil {
-		return diag.Errorf("id: Error getting FirewallTemplate: %s", err)
+		return diag.Errorf("[ERROR-043]: crash via getting FirewallTemplate by id: %s", err)
 	}
 
 	if d.HasChange("name") {
@@ -85,7 +93,7 @@ func resourceFirewallTemplateUpdate(ctx context.Context, d *schema.ResourceData,
 		firewallTemplate.Tags = unmarshalTagNames(d.Get("tags"))
 	}
 	if err = firewallTemplate.UpdateFirewallTemplate(); err != nil {
-		return diag.Errorf("name: Error rename Firewall Template: %s", err)
+		return diag.Errorf("[ERROR-043]: crash via update: %s", err)
 	}
 
 	return resourceFirewallTemplateRead(ctx, d, meta)
@@ -95,12 +103,12 @@ func resourceFirewallTemplateDelete(ctx context.Context, d *schema.ResourceData,
 	manager := meta.(*CombinedConfig).Manager()
 	FirewallTemplate, err := manager.GetFirewallTemplate(d.Id())
 	if err != nil {
-		return diag.Errorf("id: Error getting FirewallTemplate: %s", err)
+		return diag.Errorf("[ERROR-043]: crash via getting FirewallTemplate: %s", err)
 	}
 
 	err = FirewallTemplate.Delete()
 	if err != nil {
-		return diag.Errorf("Error deleting FirewallTemplate: %s", err)
+		return diag.Errorf("[ERROR-043]: crash via deleting FirewallTemplate: %s", err)
 	}
 
 	return nil

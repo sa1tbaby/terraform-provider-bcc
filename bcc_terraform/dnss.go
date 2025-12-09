@@ -48,12 +48,6 @@ func (args *Arguments) injectCreateDns() {
 			),
 			Description: "name of the Dns",
 		},
-		"project_id": {
-			Type:        schema.TypeString,
-			Required:    true,
-			ForceNew:    true,
-			Description: "id of the Project",
-		},
 		"tags": {
 			Type:     schema.TypeSet,
 			Optional: true,

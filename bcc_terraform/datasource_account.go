@@ -13,6 +13,7 @@ func dataSourceAccount() *schema.Resource {
 		Schema: map[string]*schema.Schema{
 			"id": {
 				Type:        schema.TypeString,
+				Optional:    true,
 				Computed:    true,
 				Description: "The identifier for the current user",
 			},

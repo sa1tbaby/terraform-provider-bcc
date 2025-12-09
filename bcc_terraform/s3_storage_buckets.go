@@ -35,11 +35,6 @@ func (args *Arguments) injectContextS3StorageBucketById() {
 
 func (args *Arguments) injectCreateS3StorageBucket() {
 	args.merge(Arguments{
-		"id": {
-			Type:        schema.TypeString,
-			Computed:    true,
-			Description: "id of the S3Storage",
-		},
 		"name": {
 			Type:     schema.TypeString,
 			Required: true,

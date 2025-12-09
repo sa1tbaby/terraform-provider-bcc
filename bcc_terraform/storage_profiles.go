@@ -21,16 +21,6 @@ func (args *Arguments) injectContextGetStorageProfile() {
 	})
 }
 
-func (args *Arguments) injectContextStorageProfileById() {
-	args.merge(Arguments{
-		"storage_profile_id": {
-			Type:        schema.TypeString,
-			Required:    true,
-			Description: "Id of the storage profile",
-		},
-	})
-}
-
 func (args *Arguments) injectResultStorageProfile() {
 	args.merge(Arguments{
 		"id": {

@@ -6,11 +6,6 @@ import (
 
 func (args *Arguments) injectCreateFirewallRule() {
 	args.merge(Arguments{
-		"id": {
-			Type:        schema.TypeString,
-			Computed:    true,
-			Description: "id of the firewall rule",
-		},
 		"direction": {
 			Type:        schema.TypeString,
 			Required:    true,

@@ -49,6 +49,13 @@ func (args *Arguments) injectCreateVm() {
 			),
 			Description: "name of the Vm",
 		},
+		"platform": {
+			Type:        schema.TypeString,
+			Optional:    true,
+			Default:     "",
+			ForceNew:    true,
+			Description: "platform of the Vm",
+		},
 		"cpu": {
 			Type:         schema.TypeInt,
 			Required:     true,
@@ -62,8 +69,7 @@ func (args *Arguments) injectCreateVm() {
 		},
 		"template_id": {
 			Type:        schema.TypeString,
-			Optional:    true,
-			ForceNew:    true,
+			Required:    true,
 			Description: "id of the Template",
 		},
 		"user_data": {
@@ -101,7 +107,6 @@ func (args *Arguments) injectCreateVm() {
 		"networks": {
 			Type:        schema.TypeList,
 			Optional:    true,
-			Computed:    true,
 			MinItems:    1,
 			MaxItems:    10,
 			Description: "List of Ports connected to the Vm",
@@ -110,7 +115,7 @@ func (args *Arguments) injectCreateVm() {
 					"id": {
 						Type:        schema.TypeString,
 						Required:    true,
-						Description: "Id of the Port",
+						Description: "Id of the network",
 					},
 					"ip_address": {
 						Type:        schema.TypeString,
@@ -137,6 +142,21 @@ func (args *Arguments) injectCreateVm() {
 			Optional:    true,
 			Default:     true,
 			Description: "power of vw on/off",
+		},
+		"hot_add": {
+			Type:        schema.TypeBool,
+			Optional:    true,
+			Default:     false,
+			Description: "Enabling resources hot swap for vm",
+		},
+		"affinity_groups": {
+			Type:        schema.TypeList,
+			Optional:    true,
+			Computed:    true,
+			MinItems:    1,
+			MaxItems:    10,
+			Description: "List of Affinity Groups connected to the Vm",
+			Elem:        &schema.Schema{Type: schema.TypeString},
 		},
 	})
 }
@@ -191,14 +211,27 @@ func (args *Arguments) injectResultVm() {
 		},
 		"ports": {
 			Type:        schema.TypeList,
+			Optional:    true,
 			Computed:    true,
+			MinItems:    1,
+			MaxItems:    10,
+			Description: "List of Ports connected to the Vm",
+			Deprecated:  "Use networks instead of ports",
+			Elem:        &schema.Schema{Type: schema.TypeString},
+		},
+		"networks": {
+			Type:        schema.TypeList,
+			Optional:    true,
+			Computed:    true,
+			MinItems:    1,
+			MaxItems:    10,
 			Description: "List of Ports connected to the Vm",
 			Elem: &schema.Resource{
 				Schema: map[string]*schema.Schema{
 					"id": {
 						Type:        schema.TypeString,
-						Computed:    true,
-						Description: "Id of the Port",
+						Required:    true,
+						Description: "Id of the network",
 					},
 					"ip_address": {
 						Type:        schema.TypeString,
@@ -206,21 +239,6 @@ func (args *Arguments) injectResultVm() {
 						Description: "IP of the Port",
 					},
 				},
-			},
-		},
-	})
-}
-
-func (args *Arguments) injectResultListVm() {
-	s := Defaults()
-	s.injectResultVm()
-
-	args.merge(Arguments{
-		"vms": {
-			Type:     schema.TypeList,
-			Computed: true,
-			Elem: &schema.Resource{
-				Schema: s,
 			},
 		},
 	})
@@ -249,6 +267,21 @@ func (args *Arguments) injectSystemDisk() {
 			Type:        schema.TypeString,
 			Computed:    true,
 			Description: "external id of the volume. It can be empty",
+		},
+	})
+}
+
+func (args *Arguments) injectResultListVm() {
+	s := Defaults()
+	s.injectResultVm()
+
+	args.merge(Arguments{
+		"vms": {
+			Type:     schema.TypeList,
+			Computed: true,
+			Elem: &schema.Resource{
+				Schema: s,
+			},
 		},
 	})
 }

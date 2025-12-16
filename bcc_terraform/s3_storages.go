@@ -45,10 +45,11 @@ func (args *Arguments) injectCreateS3Storage() {
 			Description: "name of the S3Storage",
 		},
 		"backend": {
-			Type:        schema.TypeString,
-			Required:    true,
-			ForceNew:    true,
-			Description: "backend for s3",
+			Type:         schema.TypeString,
+			Required:     true,
+			ForceNew:     true,
+			Description:  "backend for s3",
+			ValidateFunc: validation.StringInSlice([]string{"netapp", "minio"}, true),
 		},
 		"client_endpoint": {
 			Type:        schema.TypeString,

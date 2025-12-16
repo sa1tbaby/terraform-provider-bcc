@@ -48,16 +48,7 @@ func (args *Arguments) injectCreateDns() {
 			),
 			Description: "name of the Dns",
 		},
-		"tags": {
-			Type:     schema.TypeSet,
-			Optional: true,
-			ForceNew: true,
-			Elem: &schema.Schema{
-				Type:        schema.TypeString,
-				Description: "name of the Tag",
-			},
-			Description: "tags of the Dns",
-		},
+		"tags": newTagNamesResourceSchema("tags of the Vm"),
 	})
 }
 

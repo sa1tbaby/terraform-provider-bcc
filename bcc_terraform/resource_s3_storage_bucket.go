@@ -112,9 +112,9 @@ func resourceS3StorageBucketRead(ctx context.Context, d *schema.ResourceData, me
 	}
 
 	fields := map[string]interface{}{
-		"s_3_storage_id": s3.ID,
-		"bucket_name":    bucket.Name,
-		"external_name":  bucket.ExternalName,
+		"s3_storage_id": s3.ID,
+		"name":          bucket.Name,
+		"external_name": bucket.ExternalName,
 	}
 
 	if err := setResourceDataFromMap(d, fields); err != nil {

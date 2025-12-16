@@ -56,20 +56,20 @@ func resourceNetworkCreate(ctx context.Context, d *schema.ResourceData, meta int
 	}
 
 	if err = targetVdc.WaitLock(); err != nil {
-		return diag.Errorf("[ERROR-009]: %s", err)
+		return diag.Errorf("[ERROR-009]: crash via wait lock %s", err)
 	}
 	if err = targetVdc.CreateNetwork(&network); err != nil {
-		return diag.Errorf("[ERROR-009]: %s", err)
+		return diag.Errorf("[ERROR-009]: crash via creating %s", err)
 	}
+	d.SetId(network.ID)
 
 	if err = createSubnet(d, manager); err != nil {
-		return diag.Errorf("[ERROR-009]: %s", err)
+		return diag.Errorf("[ERROR-009]: crash via creating gsub nets%s", err)
 	}
 	if err = network.WaitLock(); err != nil {
-		return diag.Errorf("[ERROR-009]: %s", err)
+		return diag.Errorf("[ERROR-009]: crash via waitlock %s", err)
 	}
 
-	d.SetId(network.ID)
 	log.Printf("[INFO] Network created, ID: %s", d.Id())
 
 	return resourceNetworkRead(ctx, d, meta)

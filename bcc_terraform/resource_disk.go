@@ -36,20 +36,16 @@ func resourceDiskCreate(ctx context.Context, d *schema.ResourceData, meta interf
 	manager := meta.(*CombinedConfig).Manager()
 
 	config := &struct {
-		id               int
 		name             string
 		size             int
 		storageProfileId string
-		externalId       string
 		vdcId            string
 		tags             interface{}
 	}{
-		id:               d.Get("id").(int),
 		name:             d.Get("name").(string),
 		size:             d.Get("size").(int),
 		vdcId:            d.Get("vdc_id").(string),
 		storageProfileId: d.Get("storage_profile_id").(string),
-		externalId:       d.Get("external_id").(string),
 		tags:             d.Get("tags"),
 	}
 

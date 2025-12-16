@@ -83,7 +83,7 @@ func (args *Arguments) injectCreateRouter() {
 			Description: "Floating id address.",
 		},
 		"ports": {
-			Type:        schema.TypeSet,
+			Type:        schema.TypeList,
 			Optional:    true,
 			Computed:    true,
 			MinItems:    1,

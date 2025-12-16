@@ -35,35 +35,21 @@ func resourceLbaasCreate(ctx context.Context, d *schema.ResourceData, meta inter
 		return diag.Errorf("[ERROR-049]: crash via getting VDC: %s", err)
 	}
 
-	config := struct {
-		Name       string
-		Port       map[string]interface{}
-		Floating   bool
-		FloatingIp *bcc.Port
-		NetworkId  string
-		VdcId      string
-		Tags       []bcc.Tag
-	}{
-		Name:       d.Get("name").(string),
-		Port:       d.Get("port.0").(map[string]interface{}),
-		Floating:   d.Get("floating").(bool),
-		FloatingIp: nil,
-		NetworkId:  d.Get("network_id").(string),
-		VdcId:      d.Get("vdc_id").(string),
-		Tags:       unmarshalTagNames(d.Get("tags")),
-	}
-
+	name := d.Get("name").(string)
+	port := d.Get("port.0").(map[string]interface{})
+	floating := d.Get("floating").(bool)
 	portPrefix := "port.0"
 	ipAddressStr := d.Get(MakePrefix(&portPrefix, "ip_address")).(string)
 
 	// create port
-	if config.Floating {
-		config.FloatingIp = &bcc.Port{ID: "RANDOM_FIP"}
+	var floatingIp *bcc.Port
+	if floating {
+		floatingIp = &bcc.Port{ID: "RANDOM_FIP"}
 	}
 
-	network, err := manager.GetNetwork(config.Port["network_id"].(string))
+	network, err := manager.GetNetwork(port["network_id"].(string))
 	if err != nil {
-		return diag.Errorf("[ERROR-049]: crash via getting network by id=%s: %s", config.Port["network_id"].(string), err)
+		return diag.Errorf("[ERROR-049]: crash via getting network by id=%s: %s", port["network_id"].(string), err)
 	}
 	if err = network.WaitLock(); err != nil {
 		diag.Errorf("[ERROR-049]: crash via wait lock for network")
@@ -73,10 +59,10 @@ func resourceLbaasCreate(ctx context.Context, d *schema.ResourceData, meta inter
 	if ipAddressStr == "" {
 		ipAddressStr = "0.0.0.0"
 	}
-	port := bcc.NewPort(network, firewalls, ipAddressStr)
 
-	newLbaas := bcc.NewLoadBalancer(config.Name, vdc, &port, config.FloatingIp)
-	newLbaas.Tags = config.Tags
+	_port := bcc.NewPort(network, firewalls, ipAddressStr)
+	newLbaas := bcc.NewLoadBalancer(name, vdc, &_port, floatingIp)
+	newLbaas.Tags = unmarshalTagNames(d.Get("tags"))
 
 	err = vdc.CreateLoadBalancer(&newLbaas)
 	if err != nil {
@@ -148,10 +134,15 @@ func resourceLbaasUpdate(ctx context.Context, d *schema.ResourceData, meta inter
 		lbaas.Tags = unmarshalTagNames(d.Get("tags"))
 	}
 	lbaasPort := d.Get("port.0").(map[string]interface{})
-	ipAddress := lbaasPort["ipAddress"].(string)
-	if ipAddress != *lbaas.Port.IpAddress {
-		lbaas.Port.IpAddress = &ipAddress
+
+	if ipAddress := lbaasPort["ipAddress"]; ipAddress != nil {
+		if val, ok := ipAddress.(string); ok {
+			if lbaas.Port.IpAddress == nil || *lbaas.Port.IpAddress != val {
+				lbaas.Port.IpAddress = &val
+			}
+		}
 	}
+
 	if err := repeatOnError(lbaas.Update, lbaas); err != nil {
 		return diag.Errorf("[ERROR-049]: crash via updating lbaas: %s", err)
 	}

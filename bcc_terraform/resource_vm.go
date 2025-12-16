@@ -49,23 +49,23 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		name                string
 		cpu                 int
 		ram                 float64
-		platformId          string
+		platform            string
 		userData            string
 		hotAdd              bool
 		sysDisk             interface{}
 		sysDiskSize         int
 		sysStorageProfileId string
-		AffinityGroups      []string
+		AffinityGroups      []interface{}
 	}{
 		name:                d.Get("name").(string),
 		cpu:                 d.Get("cpu").(int),
 		ram:                 d.Get("ram").(float64),
-		platformId:          d.Get("platform_id").(string),
+		platform:            d.Get("platform").(string),
 		userData:            d.Get("user_data").(string),
 		hotAdd:              d.Get("hot_add").(bool),
 		sysDiskSize:         d.Get("system_disk.0.size").(int),
 		sysStorageProfileId: d.Get("system_disk.0.storage_profile_id").(string),
-		AffinityGroups:      d.Get("affinity_groups").([]string),
+		AffinityGroups:      d.Get("affinity_groups").([]interface{}),
 		sysDisk:             d.Get("system_disk"),
 	}
 
@@ -101,15 +101,15 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 	newVm.HotAdd = config.hotAdd
 	newVm.Tags = unmarshalTagNames(d.Get("tags"))
 
-	if config.platformId != "" {
-		newVm.Platform, err = manager.GetPlatform(config.platformId)
+	if config.platform != "" {
+		newVm.Platform, err = manager.GetPlatform(config.platform)
 		if err != nil {
 			return diag.Errorf("[ERROR-021]: crash via getting template: %s", err)
 		}
 	}
 
 	for _, item := range config.AffinityGroups {
-		newVm.AffinityGroups = append(newVm.AffinityGroups, &bcc.AffinityGroup{ID: item})
+		newVm.AffinityGroups = append(newVm.AffinityGroups, &bcc.AffinityGroup{ID: item.(string)})
 	}
 
 	if err = targetVdc.CreateVm(&newVm); err != nil {
@@ -208,6 +208,11 @@ func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{
 		}
 	}
 
+	affGr := make([]string, len(vm.AffinityGroups))
+	for i, aff := range vm.AffinityGroups {
+		affGr[i] = aff.ID
+	}
+
 	fields := map[string]interface{}{
 		"vdc_id":          vm.Vdc.ID,
 		"name":            vm.Name,
@@ -218,7 +223,7 @@ func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{
 		"hot_add":         vm.HotAdd,
 		"platform":        vm.Platform.ID,
 		"tags":            marshalTagNames(vm.Tags),
-		"affinity_groups": vm.AffinityGroups,
+		"affinity_groups": affGr,
 		"disks":           flattenDisks,
 		"ports":           flattenPorts,
 		"networks":        flattenNetworks,

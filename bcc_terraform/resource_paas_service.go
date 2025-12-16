@@ -175,7 +175,7 @@ func resourcePaasServiceImport(ctx context.Context, d *schema.ResourceData, meta
 
 	service, err := manager.GetPaasService(d.Id())
 	if err != nil {
-		return nil, fmt.Errorf("Error getting Paas Service: %s", err)
+		return nil, fmt.Errorf("error getting Paas Service: %s", err)
 	}
 	if err := ensureLocationCreated(service.Vdc.ID, manager); err != nil {
 		return nil, err

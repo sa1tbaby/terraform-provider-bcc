@@ -44,7 +44,7 @@ func resourceRouterCreate(ctx context.Context, d *schema.ResourceData, meta inte
 		IsDefault bool
 		System    bool
 		Floating  bool
-		portsIds  []string
+		portsIds  []interface{}
 		Tags      []bcc.Tag
 	}{
 		Name:      d.Get("name").(string),
@@ -52,13 +52,14 @@ func resourceRouterCreate(ctx context.Context, d *schema.ResourceData, meta inte
 		IsDefault: d.Get("is_default").(bool),
 		System:    d.Get("system").(bool),
 		Floating:  d.Get("floating").(bool),
-		portsIds:  d.Get("ports").([]string),
+		portsIds:  d.Get("ports").([]interface{}),
 		Tags:      unmarshalTagNames(d.Get("tags")),
 	}
 
-	router := bcc.NewRouter(config.Name, config.IsDefault)
+	router := bcc.NewRouter(config.Name, nil)
 	router.Tags = config.Tags
-	router.Vdc.ID = vdc.ID
+	router.Vdc = &bcc.Vdc{ID: config.VdcId}
+	router.IsDefault = config.IsDefault
 
 	if config.Floating {
 		floatingIpStr := "RANDOM_FIP"
@@ -66,7 +67,7 @@ func resourceRouterCreate(ctx context.Context, d *schema.ResourceData, meta inte
 	}
 
 	for _, portId := range config.portsIds {
-		port, err := manager.GetPort(portId)
+		port, err := manager.GetPort(portId.(string))
 		if err != nil {
 			return diag.FromErr(err)
 		}

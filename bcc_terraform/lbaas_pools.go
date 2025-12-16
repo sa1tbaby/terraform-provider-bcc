@@ -30,19 +30,21 @@ func (args *Arguments) injectCreateLbaasPool() {
 		"connlimit": {
 			Type:        schema.TypeInt,
 			Optional:    true,
-			Default:     "65536",
+			Default:     65536,
 			Description: "id of the Template",
 		},
 		"cookie_name": {
 			Type:        schema.TypeString,
 			Optional:    true,
-			Default:     "",
+			Computed:    true,
 			Description: "name of the Lbaas",
 		},
 		"method": {
-			Type:        schema.TypeString,
-			Optional:    true,
-			Description: "enable floating ip for the Lbaas",
+			Type:         schema.TypeString,
+			Optional:     true,
+			Description:  "enable floating ip for the Lbaas",
+			Default:      "ROUND_ROBIN",
+			ValidateFunc: validation.StringInSlice([]string{"ROUND_ROBIN", "LEAST_CONNECTIONS", "SOURCE_IP"}, true),
 		},
 		"port": {
 			Type:        schema.TypeInt,
@@ -50,18 +52,20 @@ func (args *Arguments) injectCreateLbaasPool() {
 			Description: "floating ip for the Lbaas. May be omitted",
 		},
 		"protocol": {
-			Type:        schema.TypeString,
-			Optional:    true,
-			Default:     "",
-			Description: "floating ip for the Lbaas. May be omitted",
+			Type:         schema.TypeString,
+			Optional:     true,
+			Default:      "TCP",
+			Description:  "floating ip for the Lbaas. May be omitted",
+			ValidateFunc: validation.StringInSlice([]string{"HTTP", "TCP", "HTTPS", "UDP"}, true),
 		},
 		"session_persistence": {
-			Type:        schema.TypeString,
-			Optional:    true,
-			Default:     "",
-			Description: "floating ip for the Lbaas. May be omitted",
+			Type:         schema.TypeString,
+			Optional:     true,
+			Default:      "APP_COOKIE",
+			Description:  "session_persistence of the Lbaas. May be omitted",
+			ValidateFunc: validation.StringInSlice([]string{"APP_COOKIE", "HTTP_COOKIE", "SOURCE_IP"}, true),
 		},
-		"member": {
+		"members": {
 			Type:     schema.TypeList,
 			Required: true,
 			Elem: &schema.Resource{
@@ -110,7 +114,7 @@ func (args *Arguments) injectLbaasPoolMembers() {
 		"weight": {
 			Type:        schema.TypeInt,
 			Optional:    true,
-			Default:     0,
+			Default:     1,
 			Description: "ip_address of the Port",
 			ValidateFunc: validation.All(
 				validation.IntBetween(0, 256),

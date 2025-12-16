@@ -37,45 +37,39 @@ func resourceLbaasPoolCreate(ctx context.Context, d *schema.ResourceData, meta i
 		Weight int    `json:"weight"`
 	}
 
-	config := &struct {
-		lbaasId            string
-		conlimit           int
-		cookieName         string
-		method             string
-		port               int
-		protocol           string
-		sessionPersistence string
-		members            []*member
-	}{
-		lbaasId:            d.Get("lbaas_id").(string),
-		conlimit:           d.Get("conlimit").(int),
-		cookieName:         d.Get("cookie_name").(string),
-		method:             d.Get("method").(string),
-		port:               d.Get("port").(int),
-		protocol:           d.Get("protocol").(string),
-		sessionPersistence: d.Get("session_persistence").(string),
-		members:            d.Get("member").([]*member),
-	}
+	lbaasId := d.Get("lbaas_id").(string)
+	connlimit := d.Get("connlimit").(int)
+	cookieName := d.Get("cookie_name")
+	method := d.Get("method").(string)
+	port := d.Get("port").(int)
+	protocol := d.Get("protocol").(string)
+	sessionPersistence := d.Get("session_persistence").(string)
+	members := d.Get("members").([]interface{})
 
-	lbaas, err := manager.GetLoadBalancer(config.lbaasId)
-	members := make([]*bcc.PoolMember, len(config.members))
+	lbaas, err := manager.GetLoadBalancer(lbaasId)
 	if err != nil {
-		return diag.Errorf("id: Error getting Lbaas: %s", err)
+		return diag.Errorf("[ERROR-050]: crash via getting Lbaas: %s", err)
 	}
 
-	for i, item := range config.members {
-		vm, err := manager.GetVm(item.Id)
+	poolMembers := make([]*bcc.PoolMember, len(members))
+	for i, item := range members {
+		_item := item.(map[string]interface{})
+		vm, err := manager.GetVm(_item["vm_id"].(string))
 		if err != nil {
 			return diag.Errorf("[ERROR-050]: crash via getting vm by id: %s", err)
 		}
 
-		newMember := bcc.NewLoadBalancerPoolMember(item.Port, item.Weight, vm)
-		members[i] = &newMember
+		tmpVm := bcc.TmpVm{
+			ID: vm.ID, Name: vm.Name, Cpu: vm.Cpu, Ram: vm.Ram, Power: vm.Power, Platform: vm.Platform.ID, Vdc: vm.Vdc,
+		}
+
+		newMember := bcc.NewLoadBalancerPoolMember(_item["port"].(int), _item["weight"].(int), &tmpVm)
+		poolMembers[i] = &newMember
 	}
 
 	newPool := bcc.NewLoadBalancerPool(
-		*lbaas, config.port, config.conlimit, members,
-		config.method, config.protocol, config.sessionPersistence,
+		*lbaas, port, connlimit, poolMembers,
+		method, protocol, sessionPersistence, cookieName,
 	)
 
 	err = lbaas.CreatePool(&newPool)
@@ -105,14 +99,13 @@ func resourceLbaasPoolRead(ctx context.Context, d *schema.ResourceData, meta int
 			d.SetId("")
 			return nil
 		} else {
-			return diag.Errorf("[ERROR-050] crash via getting LbaasPool: %s", err)
+			return diag.Errorf("[ERROR-050] crash via getting LbaasPool for Read: %s", err)
 		}
 	}
 
 	flattenedPools := make([]map[string]interface{}, len(lbaasPool.Members))
 	for i, member := range lbaasPool.Members {
 		flattenedPools[i] = map[string]interface{}{
-			"id":     member.ID,
 			"port":   member.Port,
 			"weight": member.Weight,
 			"vm_id":  member.Vm.ID,
@@ -147,7 +140,7 @@ func resourceLbaasPoolUpdate(ctx context.Context, d *schema.ResourceData, meta i
 
 	lbaasPool, err := lbaas.GetLoadBalancerPool(d.Id())
 	if err != nil {
-		return diag.Errorf("[ERROR-050] crash via getting LbaasPool: %s", err)
+		return diag.Errorf("[ERROR-050] crash via getting LbaasPool for Update: %s", err)
 	}
 
 	if d.HasChange("port") {
@@ -156,6 +149,12 @@ func resourceLbaasPoolUpdate(ctx context.Context, d *schema.ResourceData, meta i
 	if d.HasChange("connlimit") {
 		lbaasPool.Connlimit = d.Get("connlimit").(int)
 	}
+	if d.HasChange("cookie_name") {
+		if d.Get("cookie_name") != nil {
+			cookieName := d.Get("cookie_name").(string)
+			lbaasPool.CookieName = &cookieName
+		}
+	}
 	if d.HasChange("method") {
 		lbaasPool.Method = d.Get("method").(string)
 	}
@@ -163,10 +162,9 @@ func resourceLbaasPoolUpdate(ctx context.Context, d *schema.ResourceData, meta i
 		lbaasPool.Protocol = d.Get("protocol").(string)
 	}
 	if d.HasChange("session_persistence") {
-		sessionPersistence := d.Get("session_persistence").(string)
-		lbaasPool.SessionPersistence = &sessionPersistence
+		lbaasPool.SessionPersistence = d.Get("session_persistence").(string)
 	}
-	if d.HasChange("member") {
+	if d.HasChange("members") {
 		membersCount := d.Get("member.#").(int)
 		members := make([]*bcc.PoolMember, membersCount)
 		for i := 0; i < membersCount; i++ {
@@ -180,8 +178,11 @@ func resourceLbaasPoolUpdate(ctx context.Context, d *schema.ResourceData, meta i
 			if err != nil {
 				return diag.Errorf("[ERROR-050]: crash via getting vm by id: %s", err)
 			}
+			tmpVm := bcc.TmpVm{
+				ID: vm.ID, Name: vm.Name, Cpu: vm.Cpu, Ram: vm.Ram, Power: vm.Power, Platform: vm.Platform.ID, Vdc: vm.Vdc,
+			}
 
-			newMember := bcc.NewLoadBalancerPoolMember(port, weight, vm)
+			newMember := bcc.NewLoadBalancerPoolMember(port, weight, &tmpVm)
 			members[i] = &newMember
 		}
 		lbaasPool.Members = members
@@ -207,11 +208,11 @@ func resourceLbaasPoolDelete(ctx context.Context, d *schema.ResourceData, meta i
 
 	_, err = lbaas.GetLoadBalancerPool(d.Id())
 	if err != nil {
-		return diag.Errorf("[ERROR-050] crash via getting LbaasPool: %s", err)
+		return diag.Errorf("[ERROR-050] crash via getting LbaasPool for delete: %s", err)
 	}
 
 	if err := lbaas.DeletePool(d.Id()); err != nil {
-		return diag.Errorf("[ERROR-050] crash via getting LbaasPool: %s", err)
+		return diag.Errorf("[ERROR-050] crash via deletting LbaasPool: %s", err)
 	}
 	lbaas.WaitLock()
 
@@ -229,12 +230,12 @@ func resourceLbaasPoolImport(ctx context.Context, d *schema.ResourceData, meta i
 
 	lbaas, err := manager.GetLoadBalancer(ids[0])
 	if err != nil {
-		return nil, fmt.Errorf("[ERROR-050]: crash via getting lbaas by id: %s", err)
+		return nil, fmt.Errorf("[ERROR-050]: crash via getting lbaas by Id: %s", err)
 	}
 
 	lbaasPool, err := lbaas.GetLoadBalancerPool(ids[1])
 	if err != nil {
-		return nil, fmt.Errorf("[ERROR-050]: crash via getting lbaasPool %s", err)
+		return nil, fmt.Errorf("[ERROR-050]: crash via getting lbaasPool for import %s", err)
 	}
 
 	d.SetId(lbaasPool.ID)

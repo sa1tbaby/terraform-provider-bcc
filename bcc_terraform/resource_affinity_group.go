@@ -48,18 +48,24 @@ func resourceAffinityGroupCreate(ctx context.Context, d *schema.ResourceData, me
 		Description string
 		Policy      string
 		Reboot      bool
-		vms         []*bcc.MetaData
+		vms         []interface{}
 	}{
 		VdcId:       d.Get("vdc_id").(string),
 		Name:        d.Get("name").(string),
 		Description: d.Get("description").(string),
 		Policy:      d.Get("policy").(string),
 		Reboot:      d.Get("reboot").(bool),
-		vms:         d.Get("vms").([]*bcc.MetaData),
+		vms:         d.Get("vms").([]interface{}),
 	}
 
-	newAffGp := bcc.NewAffinityGroup(config.Name, config.Description, config.Policy, config.vms)
+	newAffGp := bcc.NewAffinityGroup(config.Name, config.Description, config.Policy, nil)
 	newAffGp.Reboot = config.Reboot
+
+	for _, item := range config.vms {
+		_item := item.(map[string]interface{})
+		vm := bcc.MetaData{ID: _item["id"].(string)}
+		newAffGp.Vms = append(newAffGp.Vms, &vm)
+	}
 
 	if err := targetVdc.CreateAffinityGroup(&newAffGp); err != nil {
 		return diag.Errorf("[ERROR-042]: crash via creating AffinityGroup: %s", err)
@@ -87,13 +93,18 @@ func resourceAffinityGroupRead(ctx context.Context, d *schema.ResourceData, meta
 		}
 	}
 
+	vms := make([]map[string]interface{}, len(affGroup.Vms))
+	for i, vm := range affGroup.Vms {
+		vms[i] = map[string]interface{}{"id": vm.ID, "name": vm.Name}
+	}
+
 	fields := map[string]interface{}{
 		"vdc_id":      affGroup.Vdc.ID,
 		"name":        affGroup.Name,
 		"description": affGroup.Description,
 		"policy":      affGroup.Policy,
 		"reboot":      affGroup.Reboot,
-		"vms":         affGroup.Vms,
+		"vms":         vms,
 	}
 
 	if err := setResourceDataFromMap(d, fields); err != nil {

@@ -36,17 +36,17 @@ func resourceKubernetes() *schema.Resource {
 func resourceKubernetesCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 	config := struct {
-		Name             string `json:"name"`
-		NodeCpu          int    `json:"node_cpu"`
-		NodeRam          int    `json:"node_ram"`
-		NodesCount       int    `json:"nodes_count"`
-		NodeDiskSize     int    `json:"node_disk_size"`
-		TemplateId       string `json:"template_id"`
-		Floating         bool   `json:"floating"`
-		PlatformId       string `json:"platform_id"`
-		UserPublicKeyId  string `json:"user_public_key_id"`
-		StorageProfileId string `json:"node_storage_profile_id"`
-		Tags             string `json:"tags"`
+		Name             string      `json:"name"`
+		NodeCpu          int         `json:"node_cpu"`
+		NodeRam          int         `json:"node_ram"`
+		NodesCount       int         `json:"nodes_count"`
+		NodeDiskSize     int         `json:"node_disk_size"`
+		TemplateId       string      `json:"template_id"`
+		Floating         bool        `json:"floating"`
+		PlatformId       string      `json:"platform_id"`
+		UserPublicKeyId  string      `json:"user_public_key_id"`
+		StorageProfileId string      `json:"node_storage_profile_id"`
+		Tags             interface{} `json:"tags"`
 	}{
 		Name:             d.Get("name").(string),
 		NodeCpu:          d.Get("node_cpu").(int),
@@ -58,7 +58,7 @@ func resourceKubernetesCreate(ctx context.Context, d *schema.ResourceData, meta 
 		PlatformId:       d.Get("platform").(string),
 		UserPublicKeyId:  d.Get("user_public_key_id").(string),
 		StorageProfileId: d.Get("node_storage_profile_id").(string),
-		Tags:             d.Get("tags").(string),
+		Tags:             d.Get("tags"),
 	}
 
 	targetVdc, err := GetVdcById(d, manager)

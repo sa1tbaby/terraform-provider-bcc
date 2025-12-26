@@ -52,7 +52,7 @@ func (args *Arguments) injectCreateVm() {
 		"platform": {
 			Type:        schema.TypeString,
 			Optional:    true,
-			Default:     "",
+			Computed:    true,
 			ForceNew:    true,
 			Description: "platform of the Vm",
 		},

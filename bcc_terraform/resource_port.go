@@ -167,9 +167,7 @@ func resourcePortDelete(ctx context.Context, d *schema.ResourceData, meta interf
 	if err != nil {
 		return diag.Errorf("Error deleting port: %s", err)
 	}
-	if err = port.WaitLock(); err != nil {
-		return diag.FromErr(err)
-	}
+	port.WaitLock()
 
 	d.SetId("")
 	log.Printf("[INFO] Port deleted, ID: %s", portId)

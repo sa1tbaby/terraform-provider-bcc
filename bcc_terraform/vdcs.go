@@ -25,18 +25,17 @@ func (args *Arguments) injectCreateVdc() {
 		"default_network_id": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "id of the Network",
+			Description: "id of the default VDC Network",
 		},
 		"default_network_name": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "name of the Network",
+			Description: "name of the default VDC Network",
 		},
 		"default_network_mtu": {
 			Type:        schema.TypeInt,
-			Optional:    true,
 			Computed:    true,
-			Description: "mtu of the Network",
+			Description: "mtu of the default vdc Network",
 		},
 		"default_network_subnets": {
 			Type:        schema.TypeList,

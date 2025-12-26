@@ -53,12 +53,29 @@ func (args *Arguments) injectResultListRouter() {
 	})
 }
 
+func (args *Arguments) injectRouterRoutes() {
+	args.merge(Arguments{
+		"destination": {
+			Type:        schema.TypeString,
+			Required:    true,
+			Description: "route destination",
+		},
+		"next_hop": {
+			Type:        schema.TypeString,
+			Required:    true,
+			Description: "next for before destination",
+		},
+	})
+}
+
 func (args *Arguments) injectCreateRouter() {
+	routes := Defaults()
+	routes.injectRouterRoutes()
+
 	args.merge(Arguments{
 		"name": {
 			Type:     schema.TypeString,
-			Optional: true,
-			Computed: true,
+			Required: true,
 			ValidateFunc: validation.All(
 				validation.NoZeroValues,
 				validation.StringLenBetween(1, 100),
@@ -97,6 +114,14 @@ func (args *Arguments) injectCreateRouter() {
 			Default:     false,
 			Deprecated:  "param has been removed",
 			Description: "Determinate if router is system.",
+		},
+		"routes": {
+			Type:        schema.TypeList,
+			Optional:    true,
+			Description: "List of Routes connected to the router",
+			Elem: &schema.Resource{
+				Schema: routes,
+			},
 		},
 		"tags": newTagNamesResourceSchema("tags of the router"),
 	})

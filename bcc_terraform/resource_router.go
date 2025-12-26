@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/basis-cloud/bcc-go/bcc"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -38,40 +39,43 @@ func resourceRouterCreate(ctx context.Context, d *schema.ResourceData, meta inte
 		return diag.Errorf("ports: Error You should setup a port for non default routers")
 	}
 
-	config := struct {
-		Name      string
-		VdcId     string
-		IsDefault bool
-		System    bool
-		Floating  bool
-		portsIds  []interface{}
-		Tags      []bcc.Tag
-	}{
-		Name:      d.Get("name").(string),
-		VdcId:     d.Get("vdc_id").(string),
-		IsDefault: d.Get("is_default").(bool),
-		System:    d.Get("system").(bool),
-		Floating:  d.Get("floating").(bool),
-		portsIds:  d.Get("ports").([]interface{}),
-		Tags:      unmarshalTagNames(d.Get("tags")),
+	name := d.Get("name").(string)
+	isDefault := d.Get("is_default").(bool)
+	system := d.Get("system")
+	portsIds := d.Get("ports").([]interface{})
+	routes := d.Get("routes").([]interface{})
+	tags := unmarshalTagNames(d.Get("tags"))
+
+	var floating *string
+	if d.Get("floating").(bool) {
+		v := "RANDOM_FIP"
+		floating = &v
 	}
 
-	router := bcc.NewRouter(config.Name, nil)
-	router.Tags = config.Tags
-	router.Vdc = &bcc.Vdc{ID: config.VdcId}
-	router.IsDefault = config.IsDefault
+	router := bcc.NewRouter(name, floating, vdc.ID)
+	router.Tags = tags
+	router.IsDefault = isDefault
 
-	if config.Floating {
-		floatingIpStr := "RANDOM_FIP"
-		router.Floating = &bcc.Port{IpAddress: &floatingIpStr}
-	}
-
-	for _, portId := range config.portsIds {
+	for _, portId := range portsIds {
 		port, err := manager.GetPort(portId.(string))
 		if err != nil {
 			return diag.FromErr(err)
 		}
 		router.Ports = append(router.Ports, port)
+	}
+
+	if strings.EqualFold(vdc.Hypervisor.Type, "Vmware") {
+		for _, route := range routes {
+			r := route.(map[string]interface{})
+			router.Routes = append(router.Routes, &bcc.Route{
+				Destination: r["destination"].(string),
+				NextHop:     r["next_hop"].(string),
+			})
+		}
+	} else {
+		if len(routes) > 0 {
+			return diag.Errorf("Error: Routes are not supported for %s hypervisor", vdc.Hypervisor.Type)
+		}
 	}
 
 	log.Printf("[DEBUG] Router create request: %#v", router)
@@ -87,7 +91,7 @@ func resourceRouterCreate(ctx context.Context, d *schema.ResourceData, meta inte
 	}
 
 	d.SetId(router.ID)
-	d.Set("system", config.System)
+	d.Set("system", system)
 	log.Printf("[INFO] Router created, ID: %s", router.ID)
 
 	return resourceRouterRead(ctx, d, meta)
@@ -110,10 +114,19 @@ func resourceRouterRead(ctx context.Context, d *schema.ResourceData, meta interf
 		ports[i] = &port.ID
 	}
 
+	routes := make([]map[string]interface{}, len(router.Routes))
+	for i, route := range router.Routes {
+		routes[i] = map[string]interface{}{
+			"destination": route.Destination,
+			"next_hop":    route.NextHop,
+		}
+	}
+
 	fields := map[string]interface{}{
 		"name":        router.Name,
 		"floating":    router.Floating != nil,
 		"is_default":  router.IsDefault,
+		"routes":      routes,
 		"floating_id": "",
 		"ports":       ports,
 		"vdc_id":      router.Vdc.ID,
@@ -149,6 +162,38 @@ func resourceRouterUpdate(ctx context.Context, d *schema.ResourceData, meta inte
 	if d.HasChange("is_default") {
 		router.IsDefault = d.Get("is_default").(bool)
 		shouldUpdate = true
+	}
+	if d.HasChange("routes") {
+		shouldUpdate = true
+		addRoutes := make(map[string]*bcc.Route)
+
+		if strings.EqualFold(router.Vdc.Hypervisor.Type, "Vmware") {
+			for _, route := range d.Get("routes").([]interface{}) {
+				r := route.(map[string]interface{})
+				addRoutes[r["next_hop"].(string)] = &bcc.Route{
+					Destination: r["destination"].(string),
+					NextHop:     r["next_hop"].(string),
+				}
+			}
+			for _, route := range router.Routes {
+				if _, exist := addRoutes[route.NextHop]; exist {
+					delete(addRoutes, route.NextHop)
+				} else {
+					if err := route.Delete(); err != nil {
+						return diag.Errorf("Error deleting route by 'id':%s", route.ID)
+					}
+				}
+			}
+			for _, route := range addRoutes {
+				if err := router.CreateRoute(route); err != nil {
+					return diag.Errorf("error creating route, for router 'id':%s", router.ID)
+				}
+			}
+		} else {
+			if len(d.Get("routes").([]interface{})) > 0 {
+				return diag.Errorf("Error: Routes are not supported for %s hypervisor", router.Vdc.Hypervisor.Type)
+			}
+		}
 	}
 	if shouldUpdate {
 		if err := router.Update(); err != nil {
@@ -187,7 +232,7 @@ func resourceRouterImport(ctx context.Context, d *schema.ResourceData, meta inte
 
 func resourceRouterDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	portsIds := d.Get("ports").(*schema.Set).List()
+	portsIds := d.Get("ports").([]interface{})
 	routerId := d.Id()
 	router, err := manager.GetRouter(routerId)
 	if err != nil {
@@ -243,20 +288,20 @@ func resourceRouterDelete(ctx context.Context, d *schema.ResourceData, meta inte
 }
 
 func syncRouterPorts(d *schema.ResourceData, manager *bcc.Manager, router *bcc.Router) (err error) {
-	portsIds := d.Get("ports").(*schema.Set).List()
-	router_id := d.Id()
+	portsIds := d.Get("ports").([]interface{})
+	routerId := d.Id()
 
 	for _, port := range router.Ports {
 		found := false
 		for _, portId := range portsIds {
-			if portId == port.ID {
+			if strings.EqualFold(portId.(string), port.ID) {
 				found = true
 				break
 			}
 		}
 
 		if !found {
-			if port.Connected != nil && port.Connected.ID == router_id {
+			if port.Connected != nil && strings.EqualFold(port.Connected.ID, routerId) {
 				log.Printf("Port %s found on vm and not mentioned in the state."+
 					" Port will be detached", port.ID)
 				router.DisconnectPort(port)
@@ -282,7 +327,7 @@ func syncRouterPorts(d *schema.ResourceData, manager *bcc.Manager, router *bcc.R
 			if port.Connected != nil && port.Connected.Type == "vm_int" {
 				return fmt.Errorf("ports: Unable to bind a port that is already connected to the server")
 			}
-			if port.Connected != nil && port.Connected.ID != router_id {
+			if port.Connected != nil && port.Connected.ID != routerId {
 				router.DisconnectPort(port)
 				port.WaitLock()
 			}

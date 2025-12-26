@@ -64,23 +64,7 @@ func resourceVdcCreate(ctx context.Context, d *schema.ResourceData, meta interfa
 	if err = vdc.WaitLock(); err != nil {
 		return diag.Errorf("[ERROR-006]: %s", err)
 	}
-	if mtu, ok := d.GetOk("default_network_mtu"); ok {
-		networks, err := vdc.GetNetworks(bcc.Arguments{"defaults_only": "true"})
-		if err != nil {
-			return diag.Errorf("[ERROR-006]: %s", err)
-		}
-		if len(networks) != 1 {
-			return diag.Errorf("[ERROR-006]: expected 1 network, got %d networks", len(networks))
-		}
-		network := networks[0]
-		mtuValue := mtu.(int)
-		network.Mtu = &mtuValue
-		if err = network.Update(); err != nil {
-			return diag.Errorf("[ERROR-006]: %s", err)
-		}
-	}
 
-	//vdc.GetNetworks()
 	d.SetId(vdc.ID)
 	log.Printf("[INFO-006] VDC created, ID: %s", d.Id())
 
@@ -102,41 +86,42 @@ func resourceVdcRead(ctx context.Context, d *schema.ResourceData, meta interface
 	if err != nil {
 		return diag.Errorf("[ERROR-006]: %s", err)
 	}
-	if len(networks) != 1 {
-		return diag.Errorf("[ERROR-006]: expected 1 network, got %d networks", len(networks))
-	}
-	network := networks[0]
 
-	subnets, err := network.GetSubnets()
-	if err != nil {
-		return diag.Errorf("[ERROR-006]: %s", err)
-	}
-
-	flattenedSubnets := make([]map[string]interface{}, len(subnets))
-	for i, subnet := range subnets {
-		dnsStrings := make([]string, len(subnet.DnsServers))
-		for i2, dns := range subnet.DnsServers {
-			dnsStrings[i2] = dns.DNSServer
-		}
-		flattenedSubnets[i] = map[string]interface{}{
-			"id":       subnet.ID,
-			"cidr":     subnet.CIDR,
-			"dhcp":     subnet.IsDHCP,
-			"gateway":  subnet.Gateway,
-			"start_ip": subnet.StartIp,
-			"end_ip":   subnet.EndIp,
-			"dns":      dnsStrings,
-		}
-	}
 	fields := map[string]interface{}{
-		"name":                    vdc.Name,
-		"project_id":              vdc.Project.ID,
-		"hypervisor_id":           vdc.Hypervisor.ID,
-		"default_network_id":      network.ID,
-		"default_network_name":    network.Name,
-		"default_network_subnets": flattenedSubnets,
-		"default_network_mtu":     network.Mtu,
-		"tags":                    marshalTagNames(vdc.Tags),
+		"name":          vdc.Name,
+		"project_id":    vdc.Project.ID,
+		"hypervisor_id": vdc.Hypervisor.ID,
+		"tags":          marshalTagNames(vdc.Tags),
+	}
+
+	if len(networks) != 0 {
+		network := networks[0]
+		subnets, err := network.GetSubnets()
+		if err != nil {
+			return diag.Errorf("[ERROR-006]: %s", err)
+		}
+
+		flattenedSubnets := make([]map[string]interface{}, len(subnets))
+		for i, subnet := range subnets {
+			dnsStrings := make([]string, len(subnet.DnsServers))
+			for i2, dns := range subnet.DnsServers {
+				dnsStrings[i2] = dns.DNSServer
+			}
+			flattenedSubnets[i] = map[string]interface{}{
+				"id":       subnet.ID,
+				"cidr":     subnet.CIDR,
+				"dhcp":     subnet.IsDHCP,
+				"gateway":  subnet.Gateway,
+				"start_ip": subnet.StartIp,
+				"end_ip":   subnet.EndIp,
+				"dns":      dnsStrings,
+			}
+		}
+
+		fields["default_network_subnets"] = flattenedSubnets
+		fields["default_network_mtu"] = network.Mtu
+		fields["default_network_name"] = network.Name
+		fields["default_network_id"] = network.ID
 	}
 
 	if err := setResourceDataFromMap(d, fields); err != nil {
@@ -167,28 +152,6 @@ func resourceVdcUpdate(ctx context.Context, d *schema.ResourceData, meta interfa
 	if err != nil {
 		return diag.Errorf("[ERROR-006] name: Error rename vdc: %s", err)
 	}
-	if d.HasChange("default_network_mtu") {
-		networks, err := vdc.GetNetworks(bcc.Arguments{"defaults_only": "true"})
-		if err != nil {
-			return diag.Errorf("[ERROR-006] Error getting vdc networks: %s", err)
-		}
-		if len(networks) != 1 {
-			return diag.Errorf("[ERROR-006] Expected 1 network, got %d networks", len(networks))
-		}
-		network := networks[0]
-
-		if mtu, ok := d.GetOk("default_network_mtu"); ok {
-			mtuValue := mtu.(int)
-			network.Mtu = &mtuValue
-		} else {
-			network.Mtu = nil
-		}
-		err = network.Update()
-		if err != nil {
-			return diag.Errorf("[ERROR-006] Error updating vdc default network: %s", err)
-		}
-	}
-
 	if err = vdc.WaitLock(); err != nil {
 		return diag.Errorf("[ERROR-006] Error locking vdc: %s", err)
 	}

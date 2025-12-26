@@ -140,7 +140,14 @@ func resourceAffinityGroupUpdate(ctx context.Context, d *schema.ResourceData, me
 
 	if d.HasChange("vms") {
 		needUpdate = true
-		affGroup.Vms = d.Get("vms").([]*bcc.MetaData)
+		raw_vms := d.Get("vms").([]interface{})
+		vms := make([]*bcc.MetaData, len(raw_vms))
+
+		for i, item := range raw_vms {
+			_item := item.(map[string]interface{})
+			vm := bcc.MetaData{ID: _item["id"].(string)}
+			vms[i] = &vm
+		}
 	}
 
 	if needUpdate {

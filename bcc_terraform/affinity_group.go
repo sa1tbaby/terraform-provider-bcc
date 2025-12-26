@@ -31,8 +31,8 @@ func (args *Arguments) injectCreateAffinityGroup() {
 			ValidateFunc: func(val interface{}, key string) (warns []string, errs []error) {
 				v := val.(string)
 				validValues := map[string]bool{
-					"soft-affinity":   true,
-					"strong-affinity": true,
+					"soft-affinity":      true,
+					"soft-anti-affinity": true,
 				}
 				if !validValues[v] {
 					errs = append(errs, fmt.Errorf("%q must be one of 'soft-affinity' or 'strong-affinity'", key))

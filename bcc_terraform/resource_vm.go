@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/basis-cloud/bcc-go/bcc"
@@ -407,14 +408,14 @@ func syncVmNetworks(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) (e
 	oldNetworks := make([]string, len(oldNetworksRaw.([]interface{})))
 	newNetworks := make([]string, len(newNetworksRaw.([]interface{})))
 
-	if targetDefinition == "ports" {
+	if strings.EqualFold(targetDefinition, "ports") {
 		for idx, item := range newNetworksRaw.([]interface{}) {
 			newNetworks[idx] = item.(string)
 		}
 		for idx, item := range oldNetworksRaw.([]interface{}) {
 			oldNetworks[idx] = item.(string)
 		}
-	} else if targetDefinition == "networks" {
+	} else if strings.EqualFold(targetDefinition, "networks") {
 		for idx, item := range newNetworksRaw.([]interface{}) {
 			_item := item.(map[string]interface{})
 			newNetworks[idx] = _item["id"].(string)

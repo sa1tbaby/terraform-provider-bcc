@@ -116,7 +116,7 @@ func resourceFirewallRuleRead(ctx context.Context, d *schema.ResourceData, meta 
 func resourceFirewallRuleUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 
-	firewallId := d.Get("firewallId").(string)
+	firewallId := d.Get("firewall_id").(string)
 	firewall, err := manager.GetFirewallTemplate(firewallId)
 	if err != nil {
 		return diag.Errorf("[ERROR-048}: crash via getting Firewall Template by id=%s: %s", firewallId, err)
@@ -147,7 +147,7 @@ func resourceFirewallRuleUpdate(ctx context.Context, d *schema.ResourceData, met
 func resourceFirewallRuleDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 
-	firewallId := d.Get("firewallId").(string)
+	firewallId := d.Get("firewall_id").(string)
 	firewall, err := manager.GetFirewallTemplate(firewallId)
 	if err != nil {
 		return diag.Errorf("[ERROR-048}: crash via getting Firewall Template by id=%s: %s", firewallId, err)

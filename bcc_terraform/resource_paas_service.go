@@ -70,7 +70,7 @@ func resourcePaasServiceRead(ctx context.Context, d *schema.ResourceData, meta i
 		}
 	}
 
-	inputsString, err := json.Marshal(service.Inputs)
+	inputsBytes, err := json.Marshal(service.Inputs)
 	if err != nil {
 		return diag.Errorf("Error marshalling Paas Service inputs: %s", err)
 	}
@@ -79,7 +79,7 @@ func resourcePaasServiceRead(ctx context.Context, d *schema.ResourceData, meta i
 		"name":                service.Name,
 		"vdc_id":              service.Vdc.ID,
 		"paas_service_id":     service.PaasServiceID,
-		"paas_service_inputs": inputsString,
+		"paas_service_inputs": string(inputsBytes),
 	}
 
 	if err := setResourceDataFromMap(d, fields); err != nil {

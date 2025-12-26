@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/basis-cloud/bcc-go/bcc"
@@ -66,7 +67,7 @@ func resourceKubernetesCreate(ctx context.Context, d *schema.ResourceData, meta 
 		return diag.Errorf("[ERROR-053]: crash via getting VDC: %s", err)
 	}
 
-	if targetVdc.Hypervisor.Type == "Vmware" && config.PlatformId == "" {
+	if strings.EqualFold(targetVdc.Hypervisor.Type, "Vmware") && config.PlatformId == "" {
 		return diag.Errorf("[ERROR-053]: field 'platform' is required for %s Hypervisor", targetVdc.Hypervisor.Type)
 	}
 
@@ -115,6 +116,7 @@ func resourceKubernetesCreate(ctx context.Context, d *schema.ResourceData, meta 
 	}
 
 	d.SetId(newKubernetes.ID)
+	d.Set("user_public_key_id", pubKey.PublicKey)
 
 	log.Printf("[INFO-053] Kubernetes created, ID: %s", d.Id())
 
@@ -272,6 +274,7 @@ func resourceKubernetesImport(ctx context.Context, d *schema.ResourceData, meta 
 	}
 
 	d.SetId(k8s.ID)
+	d.Set("user_public_key_id", k8s.UserPublicKey)
 
 	return []*schema.ResourceData{d}, nil
 }

@@ -25,10 +25,9 @@ func dataSourcePaasTemplate() *schema.Resource {
 				Description: "id of Vdc",
 			},
 			"name": {
-				Type:         schema.TypeString,
-				Optional:     true,
-				Description:  "name of Paas Template",
-				AtLeastOneOf: []string{"id", "name"},
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "name of Paas Template",
 			},
 		},
 	}
@@ -44,7 +43,7 @@ func dataSourcePaasTemplateRead(ctx context.Context, d *schema.ResourceData, met
 	idValue, ok := d.GetOk("id")
 	var template *bcc.PaasTemplate
 	if ok {
-		template, err = manager.GetPaasTemplate(idValue.(int), d.Get("vdc_id").(string))
+		template, err = manager.GetPaasTemplate(idValue.(string), d.Get("vdc_id").(string))
 		if err != nil {
 			if err.(*bcc.ApiError).Code() == 404 {
 				d.SetId("")

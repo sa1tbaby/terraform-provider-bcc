@@ -44,7 +44,7 @@ func resourceLbaasPoolCreate(ctx context.Context, d *schema.ResourceData, meta i
 	port := d.Get("port").(int)
 	protocol := d.Get("protocol").(string)
 	sessionPersistence := d.Get("session_persistence").(string)
-	members := d.Get("members").([]interface{})
+	members := d.Get("member").([]interface{})
 
 	lbaas, err := manager.GetLoadBalancer(lbaasId)
 	if err != nil {
@@ -119,7 +119,7 @@ func resourceLbaasPoolRead(ctx context.Context, d *schema.ResourceData, meta int
 		"method":              lbaasPool.Method,
 		"protocol":            lbaasPool.Protocol,
 		"session_persistence": lbaasPool.SessionPersistence,
-		"members":             flattenedPools,
+		"member":              flattenedPools,
 		"cookie_name":         lbaas.Name,
 	}
 
@@ -164,7 +164,7 @@ func resourceLbaasPoolUpdate(ctx context.Context, d *schema.ResourceData, meta i
 	if d.HasChange("session_persistence") {
 		lbaasPool.SessionPersistence = d.Get("session_persistence").(string)
 	}
-	if d.HasChange("members") {
+	if d.HasChange("member") {
 		membersCount := d.Get("member.#").(int)
 		members := make([]*bcc.PoolMember, membersCount)
 		for i := 0; i < membersCount; i++ {

@@ -62,7 +62,7 @@ func (args *Arguments) injectCreateLbaasPool() {
 			Computed:    true,
 			Description: "session_persistence of the Lbaas. May be omitted",
 		},
-		"members": {
+		"member": {
 			Type:     schema.TypeList,
 			Required: true,
 			Elem: &schema.Resource{

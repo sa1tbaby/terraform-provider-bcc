@@ -16,13 +16,13 @@ func (args *Arguments) injectCreateAffinityGroup() {
 				validation.NoZeroValues,
 				validation.StringLenBetween(1, 100),
 			),
-			Description: "name of the affinity group",
+			Description: "affinity group name",
 		},
 		"description": {
 			Type:        schema.TypeString,
 			Optional:    true,
 			Default:     "",
-			Description: "description of the affinity group",
+			Description: "affinity group description",
 		},
 		"policy": {
 			Type:     schema.TypeString,
@@ -49,14 +49,13 @@ func (args *Arguments) injectCreateAffinityGroup() {
 		},
 		"vms": {
 			Type:        schema.TypeList,
-			Optional:    true,
 			Computed:    true,
 			Description: "List of VMs",
 			Elem: &schema.Resource{
 				Schema: map[string]*schema.Schema{
 					"id": {
 						Type:        schema.TypeString,
-						Required:    true,
+						Computed:    true,
 						Description: "Id of the vm",
 					},
 					"name": {
@@ -65,6 +64,89 @@ func (args *Arguments) injectCreateAffinityGroup() {
 						Description: "Name of the vm",
 					},
 				},
+			},
+		},
+	})
+}
+
+func (args *Arguments) injectContextGetAffinityGroup() {
+	args.merge(Arguments{
+		"id": {
+			Type:        schema.TypeString,
+			Optional:    true,
+			Computed:    true,
+			Description: "affinity group identifier",
+		},
+		"name": {
+			Type:        schema.TypeString,
+			Optional:    true,
+			Computed:    true,
+			Description: "affinity group name",
+		},
+	})
+}
+
+func (args *Arguments) injectResultAffinityGroup() {
+	args.merge(Arguments{
+		"id": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "affinity group identifier",
+		},
+		"name": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "affinity group name",
+		},
+		"description": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "affinity group description",
+		},
+		"policy": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "affinity group policy",
+		},
+		"reboot": {
+			Type:        schema.TypeBool,
+			Computed:    true,
+			Description: "Whether to reboot the affinity group",
+		},
+		"vms": {
+			Type:        schema.TypeList,
+			Computed:    true,
+			Description: "List of VMs",
+			Elem: &schema.Resource{
+				Schema: map[string]*schema.Schema{
+					"id": {
+						Type:        schema.TypeString,
+						Computed:    true,
+						Description: "identifier of the vm in group",
+					},
+					"name": {
+						Type:        schema.TypeString,
+						Computed:    true,
+						Description: "name of the vm in group",
+					},
+				},
+			},
+		},
+	})
+
+}
+
+func (args *Arguments) injectResultListAffinityGroup() {
+	s := Defaults()
+	s.injectResultAffinityGroup()
+
+	args.merge(Arguments{
+		"affinity_groups": {
+			Type:        schema.TypeList,
+			Computed:    true,
+			Description: "List of affinity groups",
+			Elem: &schema.Resource{
+				Schema: s,
 			},
 		},
 	})

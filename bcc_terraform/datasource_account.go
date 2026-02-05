@@ -15,7 +15,7 @@ func dataSourceAccount() *schema.Resource {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Computed:    true,
-				Description: "The identifier for the current user",
+				Description: "the user’s unique identifier",
 			},
 			"email": {
 				Type:        schema.TypeString,

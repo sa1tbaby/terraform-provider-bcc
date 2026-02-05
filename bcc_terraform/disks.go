@@ -58,32 +58,32 @@ func (args *Arguments) injectResultDisk() {
 		"id": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "id of the Disk",
+			Description: "disk identifier",
 		},
 		"name": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "name of the Disk",
+			Description: "disk name	",
 		},
 		"size": {
 			Type:        schema.TypeInt,
 			Computed:    true,
-			Description: "the size of the Disk in gigabytes",
+			Description: "disk size in GB",
 		},
 		"storage_profile_id": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "the id of the StorageProfile",
+			Description: "storage profile identifier",
 		},
 		"storage_profile_name": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "the name of the StorageProfile",
+			Description: "storage profile name",
 		},
 		"external_id": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "external id of the volume. It can be empty",
+			Description: "disk identifier in the RUSTEC PV segment (for RUSTEC VDCs)",
 		},
 	})
 }

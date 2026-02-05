@@ -11,13 +11,13 @@ func (args *Arguments) injectContextGetFirewallTemplate() {
 			Type:        schema.TypeString,
 			Optional:    true,
 			Computed:    true,
-			Description: "name of the Firewall Template",
+			Description: "firewall template name",
 		},
 		"id": {
 			Type:        schema.TypeString,
 			Optional:    true,
 			Computed:    true,
-			Description: "id of the Firewall Template",
+			Description: "firewall template identifier",
 		},
 	})
 }

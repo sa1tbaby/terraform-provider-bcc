@@ -9,7 +9,7 @@ func (args *Arguments) injectContextGetProject() {
 	args.merge(Arguments{
 		"name": {
 			Type:        schema.TypeString,
-			Description: "name of the Project",
+			Description: "Project name",
 			Optional:    true,
 			Computed:    true,
 		},
@@ -17,7 +17,7 @@ func (args *Arguments) injectContextGetProject() {
 			Type:        schema.TypeString,
 			Optional:    true,
 			Computed:    true,
-			Description: "id of the Project",
+			Description: "Project identifier",
 		},
 	})
 }
@@ -26,7 +26,7 @@ func (args *Arguments) injectContextProjectById() {
 	args.merge(Arguments{
 		"project_id": {
 			Type:        schema.TypeString,
-			Description: "id of the Project",
+			Description: "Project identifier",
 			Required:    true,
 			ForceNew:    true,
 		},
@@ -63,12 +63,12 @@ func (args *Arguments) injectResultProject() {
 		"id": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "id of the Project",
+			Description: "Project identifier",
 		},
 		"name": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "name of the Project",
+			Description: "Project name",
 		},
 	})
 }

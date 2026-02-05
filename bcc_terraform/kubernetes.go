@@ -11,13 +11,13 @@ func (args *Arguments) injectContextGetKubernetes() {
 			Type:        schema.TypeString,
 			Optional:    true,
 			Computed:    true,
-			Description: "name of the kubernetes",
+			Description: "kubernetes name",
 		},
 		"id": {
 			Type:        schema.TypeString,
 			Optional:    true,
 			Computed:    true,
-			Description: "id of the kubernetes",
+			Description: "kubernetes identifier",
 		},
 	})
 }
@@ -115,38 +115,37 @@ func (args *Arguments) injectResultKubernetes() {
 		"id": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "id of the kubernetes",
+			Description: "kubernetes identifier",
 		},
 		"name": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "name of the kubernetes",
+			Description: "kubernetes name",
 		},
 		"node_cpu": {
-			Type:     schema.TypeInt,
-			Computed: true,
-
-			Description: "the number of virtual cpus",
+			Type:        schema.TypeInt,
+			Computed:    true,
+			Description: "number of virtual CPUs per cluster node",
 		},
 		"node_ram": {
 			Type:        schema.TypeInt,
 			Computed:    true,
-			Description: "memory of the kubernetes in gigabytes",
+			Description: "amount of RAM per cluster node in GB",
 		},
 		"template_id": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "id of the Template",
+			Description: "Kubernetes template identifier",
 		},
 		"floating": {
 			Type:        schema.TypeBool,
 			Computed:    true,
-			Description: "enable floating ip for the kubernetes",
+			Description: "whether the cluster has a public IP address",
 		},
 		"floating_ip": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "floating ip for the kubernetes. May be omitted",
+			Description: "cluster public IP address, if available",
 		},
 		"nodes_count": {
 			Type:        schema.TypeInt,
@@ -156,28 +155,28 @@ func (args *Arguments) injectResultKubernetes() {
 		"node_disk_size": {
 			Type:        schema.TypeInt,
 			Computed:    true,
-			Description: "size in gb for the vms disk attached to kubernetes.",
+			Description: "cluster node disk size in GB, specified at cluster creation",
 		},
 		"user_public_key_id": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "pub key id for vms attached to kubernetes.",
+			Description: "cluster public key",
 		},
 		"node_storage_profile_id": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "storage_profile_id for vms disks attached to kubernetes.",
+			Description: "storage profile identifier for cluster node disks",
 		},
 		"vms": {
 			Type:        schema.TypeSet,
 			Computed:    true,
-			Description: "List of Vms connected to the kubernetes",
+			Description: "list of server id (String) identifiers belonging to the cluster",
 			Elem:        &schema.Schema{Type: schema.TypeString},
 		},
 		"dashboard_url": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "Kubernetes dashboard url",
+			Description: "cluster management dashboard URL",
 		},
 	})
 }

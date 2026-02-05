@@ -2,6 +2,7 @@ package bcc_terraform
 
 import (
 	"context"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -45,6 +46,18 @@ func Provider() *schema.Provider {
 				Required:    true,
 				DefaultFunc: schema.EnvDefaultFunc("BASIS_API_URL", "https://cp.iteco.cloud"),
 				Description: "The URL to use for the  API.",
+			},
+			"api_request_timeout": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Default:     "20m",
+				Description: "The timeout value for API operations.",
+			},
+			"api_request_interval": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Default:     "3s",
+				Description: "The interval value for API operations.",
 			},
 			"client_id": {
 				Type:        schema.TypeString,
@@ -92,6 +105,8 @@ func Provider() *schema.Provider {
 			"basis_platform":             dataSourcePlatform(),            // 039-data-get-platform +
 			"basis_platforms":            dataSourcePlatforms(),           // 040-data-get-platforms +
 			"basis_paas_template":        dataSourcePaasTemplate(),        // 041-data-get-paas-template +
+			"basis_affinity_group":       dataSourceAffinityGroup(),       // 055-data-get-affinity-group +
+			"basis_affinity_groups":      dataSourceAffinityGroups(),      // 056-data-get-affinity-groups +
 		},
 
 		ResourcesMap: map[string]*schema.Resource{
@@ -130,15 +145,26 @@ func Provider() *schema.Provider {
 }
 
 func providerConfigure(d *schema.ResourceData, terraformVersion string) (interface{}, diag.Diagnostics) {
+	timeout, err := time.ParseDuration(d.Get("api_request_timeout").(string))
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+	interval, err := time.ParseDuration(d.Get("api_request_interval").(string))
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+
 	config := Config{
-		Token:            d.Get("token").(string),
-		CaCert:           d.Get("ca_cert").(string),
-		Cert:             d.Get("cert").(string),
-		CertKey:          d.Get("cert_key").(string),
-		Insecure:         d.Get("insecure").(bool),
-		APIEndpoint:      d.Get("api_endpoint").(string),
-		ClientID:         d.Get("client_id").(string),
-		TerraformVersion: terraformVersion,
+		Token:              d.Get("token").(string),
+		CaCert:             d.Get("ca_cert").(string),
+		Cert:               d.Get("cert").(string),
+		CertKey:            d.Get("cert_key").(string),
+		Insecure:           d.Get("insecure").(bool),
+		APIEndpoint:        d.Get("api_endpoint").(string),
+		APIRequestTimeout:  timeout,
+		APIRequestInterval: interval,
+		ClientID:           d.Get("client_id").(string),
+		TerraformVersion:   terraformVersion,
 	}
 
 	return config.Client()

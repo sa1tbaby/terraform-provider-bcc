@@ -9,10 +9,18 @@ import (
 
 func (args *Arguments) injectCreatePort() {
 	args.merge(Arguments{
+		"vdc_id": {
+			Type:        schema.TypeString,
+			Optional:    true,
+			ForceNew:    true,
+			Computed:    true,
+			Description: "id of the VDC",
+		},
 		"network_id": {
 			Type:        schema.TypeString,
 			ForceNew:    true,
-			Required:    true,
+			Optional:    true,
+			Computed:    true,
 			Description: "id of the Network",
 		},
 		"ip_address": {
@@ -42,12 +50,12 @@ func (args *Arguments) injectResultPort() {
 			Type:        schema.TypeString,
 			Optional:    true,
 			Computed:    true,
-			Description: "id of the Port",
+			Description: "Port identifier",
 		},
 		"network": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "id of the Network",
+			Description: "Network identifier",
 		},
 		"ip_address": {
 			Type:         schema.TypeString,

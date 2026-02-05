@@ -34,14 +34,10 @@ func dataSourceVmsRead(ctx context.Context, d *schema.ResourceData, meta interfa
 
 	flattenedRecords := make([]map[string]interface{}, len(allVms))
 	for i, vm := range allVms {
-		var portsSlice []map[string]interface{}
 
-		for _, port := range vm.Ports {
-			portMap := map[string]interface{}{
-				"id":         port.ID,
-				"ip_address": port.IpAddress,
-			}
-			portsSlice = append(portsSlice, portMap)
+		portsSlice := make([]string, len(vm.Ports))
+		for j, port := range vm.Ports {
+			portsSlice[j] = port.ID
 		}
 
 		flattenedRecords[i] = map[string]interface{}{

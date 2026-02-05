@@ -35,8 +35,10 @@ func dataSourceStorageProfilesRead(ctx context.Context, d *schema.ResourceData, 
 	flattenedStorageProfiles := make([]map[string]interface{}, len(storageProfiles))
 	for i, storageProfile := range storageProfiles {
 		flattenedStorageProfiles[i] = map[string]interface{}{
-			"id":   storageProfile.ID,
-			"name": storageProfile.Name,
+			"id":            storageProfile.ID,
+			"name":          storageProfile.Name,
+			"max_disk_size": storageProfile.MaxDiskSize,
+			"enabled":       storageProfile.Enabled,
 		}
 	}
 

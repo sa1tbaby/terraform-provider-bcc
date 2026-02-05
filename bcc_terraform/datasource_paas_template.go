@@ -17,17 +17,17 @@ func dataSourcePaasTemplate() *schema.Resource {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Computed:    true,
-				Description: "id of the Paas Template",
+				Description: "Paas Template identifier",
 			},
 			"vdc_id": {
 				Type:        schema.TypeString,
 				Required:    true,
-				Description: "id of Vdc",
+				Description: "Vdc identifier",
 			},
 			"name": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Description: "name of Paas Template",
+				Description: "Paas Template name",
 			},
 		},
 	}

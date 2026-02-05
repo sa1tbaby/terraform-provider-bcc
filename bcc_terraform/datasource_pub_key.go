@@ -12,7 +12,7 @@ func dataSourcePublicKey() *schema.Resource {
 	args := Defaults()
 	args.injectResultPublicKey()
 	args.injectContextAccountById()
-	args.injectContextGetPublicKey() // override name
+	args.injectContextGetPublicKey()
 
 	return &schema.Resource{
 		ReadContext: dataSourcePublicKeyRead,

@@ -45,8 +45,10 @@ func dataSourceStorageProfileRead(ctx context.Context, d *schema.ResourceData, m
 	}
 
 	flatten := map[string]interface{}{
-		"id":   targetStorageProfile.ID,
-		"name": targetStorageProfile.Name,
+		"id":            targetStorageProfile.ID,
+		"name":          targetStorageProfile.Name,
+		"max_disk_size": targetStorageProfile.MaxDiskSize,
+		"enabled":       targetStorageProfile.Enabled,
 	}
 
 	if err := setResourceDataFromMap(d, flatten); err != nil {

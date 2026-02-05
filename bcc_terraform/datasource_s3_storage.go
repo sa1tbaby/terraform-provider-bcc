@@ -12,7 +12,7 @@ func dataSourceS3Storage() *schema.Resource {
 	args := Defaults()
 	args.injectContextProjectById()
 	args.injectResultS3Storage()
-	args.injectContextGetS3Storage() // override name
+	args.injectContextGetS3Storage()
 
 	return &schema.Resource{
 		ReadContext: dataSourceS3StorageRead,

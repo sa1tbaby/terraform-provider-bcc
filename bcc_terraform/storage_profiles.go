@@ -33,6 +33,16 @@ func (args *Arguments) injectResultStorageProfile() {
 			Computed:    true,
 			Description: "Name of the storage profile",
 		},
+		"max_disk_size": {
+			Type:        schema.TypeInt,
+			Computed:    true,
+			Description: "Maximum disk size in bytes",
+		},
+		"enabled": {
+			Type:        schema.TypeBool,
+			Computed:    true,
+			Description: "Whether the storage profile is enabled",
+		},
 	})
 }
 

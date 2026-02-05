@@ -11,13 +11,13 @@ func (args *Arguments) injectContextGetRouter() {
 			Type:        schema.TypeString,
 			Optional:    true,
 			Computed:    true,
-			Description: "name of the Router",
+			Description: "Router name",
 		},
 		"id": {
 			Type:        schema.TypeString,
 			Optional:    true,
 			Computed:    true,
-			Description: "id of the Router",
+			Description: "Router identifier",
 		},
 	})
 }

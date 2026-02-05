@@ -13,13 +13,13 @@ func (args *Arguments) injectContextGetDns() {
 			Type:        schema.TypeString,
 			Optional:    true,
 			Computed:    true,
-			Description: "name of the Dns",
+			Description: "dns name",
 		},
 		"id": {
 			Type:        schema.TypeString,
 			Optional:    true,
 			Computed:    true,
-			Description: "id of the Dns",
+			Description: "dns identifier",
 		},
 	})
 }

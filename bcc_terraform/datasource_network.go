@@ -12,7 +12,7 @@ func dataSourceNetwork() *schema.Resource {
 	args := Defaults()
 	args.injectResultNetwork()
 	args.injectContextVdcByIdForData()
-	args.injectContextGetNetwork() // override "name"
+	args.injectContextGetNetwork()
 
 	return &schema.Resource{
 		ReadContext: dataSourceNetworkRead,

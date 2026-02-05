@@ -18,13 +18,13 @@ func (args *Arguments) injectContextGetPlatform() {
 			Type:        schema.TypeString,
 			Optional:    true,
 			Computed:    true,
-			Description: "name of the Platform",
+			Description: "Platform name",
 		},
 		"id": {
 			Type:        schema.TypeString,
 			Optional:    true,
 			Computed:    true,
-			Description: "id of the Platform",
+			Description: "Platform identifier",
 		},
 	})
 }

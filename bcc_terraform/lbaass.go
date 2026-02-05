@@ -11,13 +11,13 @@ func (args *Arguments) injectContextGetLbaas() {
 			Type:        schema.TypeString,
 			Optional:    true,
 			Computed:    true,
-			Description: "name of the Lbaas",
+			Description: "Lbaas name",
 		},
 		"id": {
 			Type:        schema.TypeString,
 			Optional:    true,
 			Computed:    true,
-			Description: "id of the Lbaas",
+			Description: "Lbaas identifier",
 		},
 	})
 }
@@ -103,22 +103,22 @@ func (args *Arguments) injectResultLbaas() {
 		"id": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "id of the Lbaas",
+			Description: "Lbaas identifier",
 		},
 		"name": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "name of the Lbaas",
+			Description: "Lbaas name",
 		},
 		"floating": {
 			Type:        schema.TypeBool,
 			Computed:    true,
-			Description: "enable floating ip for the Lbaas",
+			Description: "whether the load balancer has a public IP address",
 		},
 		"floating_ip": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "floating_ip of the Lbaas. May be omitted",
+			Description: "public IP address of the load balancer. May be omitted",
 		},
 	})
 }

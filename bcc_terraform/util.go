@@ -226,6 +226,28 @@ func GetNetworkByName(d *schema.ResourceData, manager *bcc.Manager, vdc *bcc.Vdc
 	return targetNetwork, nil
 }
 
+func GetAffinityGroupByName(d *schema.ResourceData, manager *bcc.Manager, vdc *bcc.Vdc) (*bcc.AffinityGroup, error) {
+	affinityGroups, err := manager.GetAffinityGroups()
+	if err != nil {
+		return nil, errors.Wrapf(err, "Error getting list of affinity groups")
+	}
+
+	var targetAffinityGroup *bcc.AffinityGroup
+
+	name := d.Get("name").(string)
+	for _, affinityGroup := range affinityGroups {
+		if affinityGroup.Name == name && affinityGroup.Vdc.ID == vdc.ID {
+			targetAffinityGroup = affinityGroup
+			break
+		}
+	}
+
+	if targetAffinityGroup == nil {
+		return nil, fmt.Errorf("ERROR. Affinity group with name '%s' not found", name)
+	}
+	return targetAffinityGroup, nil
+}
+
 func GetStorageProfileByName(d *schema.ResourceData, manager *bcc.Manager, vdc *bcc.Vdc) (*bcc.StorageProfile, error) {
 	storageProfiles, err := vdc.GetStorageProfiles()
 	if err != nil {

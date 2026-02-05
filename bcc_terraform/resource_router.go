@@ -124,21 +124,25 @@ func resourceRouterRead(ctx context.Context, d *schema.ResourceData, meta interf
 
 	fields := map[string]interface{}{
 		"name":        router.Name,
-		"floating":    router.Floating != nil,
+		"floating":    nil,
 		"is_default":  router.IsDefault,
 		"routes":      routes,
-		"floating_id": "",
+		"floating_id": nil,
 		"ports":       ports,
 		"vdc_id":      router.Vdc.ID,
 		"tags":        marshalTagNames(router.Tags),
 	}
 
-	if err = setResourceDataFromMap(d, fields); err != nil {
-		return diag.FromErr(err)
+	if router.Floating != nil {
+		fields["floating"] = true
+		fields["floating_id"] = router.Floating.ID
+	} else {
+		fields["floating"] = false
+		fields["floating_id"] = ""
 	}
 
-	if router.Floating != nil {
-		d.Set("floating_id", router.Floating.ID)
+	if err = setResourceDataFromMap(d, fields); err != nil {
+		return diag.FromErr(err)
 	}
 
 	return nil
@@ -195,19 +199,22 @@ func resourceRouterUpdate(ctx context.Context, d *schema.ResourceData, meta inte
 			}
 		}
 	}
+
 	if shouldUpdate {
-		if err := router.Update(); err != nil {
+		if err = repeatOnError(router.Update, router); err != nil {
 			return diag.Errorf("error on router's update %s", err)
 		}
-	}
-
-	if err := syncFloating(d, router); err != nil {
-		return diag.FromErr(err)
+		router.WaitLock()
 	}
 
 	// Disconnect ports and connect new
 	err = syncRouterPorts(d, manager, router)
 	if err != nil {
+		return diag.FromErr(err)
+	}
+	router.WaitLock()
+
+	if err := syncFloating(d, router); err != nil {
 		return diag.FromErr(err)
 	}
 	router.WaitLock()
@@ -346,26 +353,17 @@ func syncRouterPorts(d *schema.ResourceData, manager *bcc.Manager, router *bcc.R
 }
 
 func syncFloating(d *schema.ResourceData, router *bcc.Router) (err error) {
-	floating := d.Get("floating")
+	oldFloating, newFloating := d.GetChange("floating")
 
-	if floating.(bool) && (router.Floating == nil) {
-		// add floating if it was removed
+	if !oldFloating.(bool) && newFloating.(bool) {
 		router.Floating = &bcc.Port{ID: "RANDOM_FIP"}
-		if err = repeatOnError(router.Update, router); err != nil {
-			return fmt.Errorf("ERROR: Can't update Router: %s", err)
-		}
-		d.Set("floating", true)
-		d.Set("floating_id", router.Floating.ID)
-	} else if !floating.(bool) && (router.Floating != nil) {
-		// remove floating if needed
+	} else if oldFloating.(bool) && !newFloating.(bool) {
 		router.Floating = nil
-
-		if err = repeatOnError(router.Update, router); err != nil {
-			return fmt.Errorf("ERROR: Can't update Router: %s", err)
-		}
-	} else if floating.(bool) && (router.Floating != nil) {
-		d.Set("floating", true)
-		d.Set("floating_id", router.Floating.ID)
 	}
-	return
+
+	if err = repeatOnError(router.Update, router); err != nil {
+		return fmt.Errorf("ERROR: crash via updating floating for router: %s", err)
+	}
+
+	return nil
 }

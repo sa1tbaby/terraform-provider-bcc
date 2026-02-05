@@ -56,6 +56,7 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		sysDisk             interface{}
 		sysDiskSize         int
 		sysStorageProfileId string
+		disks               []interface{}
 		AffinityGroups      []interface{}
 	}{
 		name:                d.Get("name").(string),
@@ -64,10 +65,11 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		platform:            d.Get("platform").(string),
 		userData:            d.Get("user_data").(string),
 		hotAdd:              d.Get("hot_add").(bool),
+		sysDisk:             d.Get("system_disk"),
 		sysDiskSize:         d.Get("system_disk.0.size").(int),
 		sysStorageProfileId: d.Get("system_disk.0.storage_profile_id").(string),
+		disks:               d.Get("disks").(*schema.Set).List(),
 		AffinityGroups:      d.Get("affinity_groups").([]interface{}),
-		sysDisk:             d.Get("system_disk"),
 	}
 
 	// System disk creation
@@ -89,18 +91,17 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		}
 		ports[i] = port
 	}
+
 	var floatingIp *string = nil
 	if d.Get("floating").(bool) {
 		floatingIpStr := "RANDOM_FIP"
 		floatingIp = &floatingIpStr
 	}
+
 	newVm := bcc.NewVm(
 		config.name, config.cpu, config.ram, template, nil,
 		&config.userData, ports, systemDiskList, floatingIp,
 	)
-
-	newVm.HotAdd = config.hotAdd
-	newVm.Tags = unmarshalTagNames(d.Get("tags"))
 
 	if config.platform != "" {
 		newVm.Platform, err = manager.GetPlatform(config.platform)
@@ -113,12 +114,24 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		newVm.AffinityGroups = append(newVm.AffinityGroups, &bcc.AffinityGroup{ID: item.(string)})
 	}
 
+	for _, item := range config.disks {
+		configDisk, err := manager.GetDisk(item.(string))
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		newVm.Disks = append(newVm.Disks, configDisk)
+	}
+
+	newVm.HotAdd = config.hotAdd
+	newVm.Tags = unmarshalTagNames(d.Get("tags"))
+
 	if err = targetVdc.CreateVm(&newVm); err != nil {
 		return diag.Errorf("[ERROR-021]: %s", err)
 	}
 	if err = newVm.WaitLock(); err != nil {
 		return diag.Errorf("[ERROR-021]: %s", err)
 	}
+	log.Printf("[INFO] VM created, ID: %s", d.Id())
 
 	vmPower := d.Get("power").(bool)
 	if !vmPower {
@@ -127,29 +140,11 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		}
 	}
 
-	systemDisk := make([]interface{}, 1)
-	systemDisk[0] = map[string]interface{}{
-		"id":                 newVm.Disks[0].ID,
-		"name":               "Основной диск",
-		"size":               newVm.Disks[0].Size,
-		"storage_profile_id": newVm.Disks[0].StorageProfile.ID,
-	}
-
-	syncVmDisks(d, manager, targetVdc, &newVm)
-
-	//if err = syncVmDisks(d, manager, targetVdc, &newVm); err != nil {
-	//	return diag.Errorf("[ERROR-021]: %s", err)
-	//}
-
 	d.SetId(newVm.ID)
-	fields := map[string]interface{}{
-		"user_data":   config.userData,
-		"system_disk": config.sysDisk,
-	}
+	fields := map[string]interface{}{"user_data": config.userData}
 	if err = setResourceDataFromMap(d, fields); err != nil {
 		return diag.Errorf("[ERROR-021]: %s", err)
 	}
-	log.Printf("[INFO] VM created, ID: %s", d.Id())
 
 	return resourceVmRead(ctx, d, meta)
 }
@@ -550,21 +545,30 @@ func disconnectVmOldPort(portId string, manager *bcc.Manager, vm *bcc.Vm) diag.D
 	return nil
 }
 
-func syncVmDisks(d *schema.ResourceData, manager *bcc.Manager, vdc *bcc.Vdc, vm *bcc.Vm) error {
-	targetVdc, err := GetVdcById(d, manager)
-	if err != nil {
-		return fmt.Errorf("crash via getting VDC: %s", err)
+func syncVmDisks(d *schema.ResourceData, manager *bcc.Manager, vdc *bcc.Vdc, vm *bcc.Vm) (err error) {
+	oldDisks, newDisks := d.GetChange("disks")
+	newDisksSet := make(map[string]bool)
+	oldDisksSet := make(map[string]bool)
+
+	for _, item := range newDisks.(*schema.Set).List() {
+		newDisksSet[item.(string)] = true
+	}
+	for _, item := range oldDisks.(*schema.Set).List() {
+		_item := item.(string)
+
+		if newDisksSet[_item] {
+			delete(newDisksSet, _item)
+		} else {
+			oldDisksSet[_item] = true
+		}
 	}
 
-	// Which disks are present on vm and not mentioned in the state?
-	// Detach disks
-	if err = detachVmOldDisk(d, manager, vm); err != nil {
-		return fmt.Errorf("crash via detaching old disk: %s", err)
+	if err = detachVmDisks(oldDisksSet, manager, vm); err != nil {
+		return fmt.Errorf("crash via detaching vm disks: %s", err)
 	}
 
-	// List disks to join
-	if err = attachVmNewDisk(d, manager, vm); err != nil {
-		return fmt.Errorf("crash via attaching new disk: %s", err)
+	if err = attachVmDisks(newDisksSet, manager, vm); err != nil {
+		return fmt.Errorf("crash via detaching vm disks: %s", err)
 	}
 
 	// System disk resize
@@ -586,7 +590,7 @@ func syncVmDisks(d *schema.ResourceData, manager *bcc.Manager, vdc *bcc.Vdc, vm 
 		}
 
 		storageProfileId := d.Get("system_disk.0.storage_profile_id").(string)
-		storageProfile, err := targetVdc.GetStorageProfile(storageProfileId)
+		storageProfile, err := vdc.GetStorageProfile(storageProfileId)
 		if err != nil {
 			return err
 		}
@@ -600,100 +604,39 @@ func syncVmDisks(d *schema.ResourceData, manager *bcc.Manager, vdc *bcc.Vdc, vm 
 	return nil
 }
 
-func attachVmNewDisk(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) error {
-	disksIds := d.Get("disks").(*schema.Set).List()
-	// Save system_disk
-	systemDiskResource := d.Get("system_disk.0")
-	systemDisk := systemDiskResource.(map[string]interface{})["id"].(string)
-	var needReload bool
-	disksIds = append(disksIds, systemDisk)
-	vmId := vm.ID
-
-	for _, diskId := range disksIds {
-		found := false
-		for _, disk := range vm.Disks {
-			if diskId == disk.ID {
-				found = true
-				break
-			}
+func attachVmDisks(disks map[string]bool, manager *bcc.Manager, vm *bcc.Vm) (err error) {
+	for diskId, _ := range disks {
+		disk, err := manager.GetDisk(diskId)
+		if err != nil {
+			return fmt.Errorf("disk with id %s not found: %s", diskId, err)
 		}
 
-		if !found {
-			disk, err := manager.GetDisk(diskId.(string))
-			if err != nil {
-				return err
-			}
-
-			if disk.Vm != nil && disk.Vm.ID != vmId {
-				log.Printf("Disk %s found on other vm and will be detached for attached to vm.", disk.ID)
-				if err = vm.DetachDisk(disk); err != nil {
-					return err
-				}
-				if err = vm.Reload(); err != nil {
-					return err
-				}
-				if err = vm.WaitLock(); err != nil {
-					return err
-				}
-			}
-			log.Printf("Disk `%s` will be Attached", disk.ID)
-
+		if disk.Vm != nil && disk.Vm.ID != vm.ID {
+			return fmt.Errorf("disk %s is already attached to another vm. please detach it before conecting", disk.ID)
+		} else if disk.Vm == nil {
 			if err = vm.AttachDisk(disk); err != nil {
-				return err
+				return fmt.Errorf("crash via attaching disk with id='%s': %s", disk.ID, err)
 			}
-
-			needReload = true
 		}
 	}
 
-	if needReload {
-		if err := vm.Reload(); err != nil {
-			return err
-		}
-	}
-	return nil
+	return
 }
 
-func detachVmOldDisk(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) error {
-	var needReload bool
-	vmId := vm.ID
-
-	systemDiskResource := d.Get("system_disk.0")
-	systemDisk := systemDiskResource.(map[string]interface{})["id"].(string)
-
-	disksIds := d.Get("disks").(*schema.Set).List()
-	disksIds = append(disksIds, systemDisk)
-
-	for _, disk := range vm.Disks {
-		found := false
-		for _, diskId := range disksIds {
-			if diskId == disk.ID {
-				found = true
-				break
-			}
+func detachVmDisks(disks map[string]bool, manager *bcc.Manager, vm *bcc.Vm) (err error) {
+	for diskId, _ := range disks {
+		disk, err := manager.GetDisk(diskId)
+		if err != nil {
+			return fmt.Errorf("disk with id %s not found: %s", diskId, err)
 		}
 
-		if !found {
-			disk, err := manager.GetDisk(disk.ID)
-			if err != nil {
-				return err
-			}
-
-			if disk.Vm != nil && disk.Vm.ID == vmId {
-				log.Printf("Disk %s found on vm and not mentioned in the state."+
-					" Disk will be detached", disk.ID)
-				if err = vm.DetachDisk(disk); err != nil {
-					return err
-				}
-				needReload = true
+		if disk.Vm != nil && disk.Vm.ID == vm.ID {
+			log.Printf("Disk %s found on vm and not mentioned in the state. Disk will be detached", disk.ID)
+			if err = vm.DetachDisk(disk); err != nil {
+				return fmt.Errorf("crash via detaching disk with id='%s': %s", disk.ID, err)
 			}
 		}
 	}
 
-	if needReload {
-		if err := vm.Reload(); err != nil {
-			return err
-		}
-	}
-	return nil
+	return
 }

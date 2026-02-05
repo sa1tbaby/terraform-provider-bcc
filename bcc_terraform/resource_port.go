@@ -13,7 +13,6 @@ import (
 
 func resourcePort() *schema.Resource {
 	args := Defaults()
-	args.injectContextOptionalVdcById()
 	args.injectCreatePort()
 
 	return &schema.Resource{
@@ -33,21 +32,36 @@ func resourcePort() *schema.Resource {
 }
 
 func resourcePortCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	var err error
+	var vdcId string
+	var ipAddressStr string
+	var portNetwork *bcc.Network
+
 	manager := meta.(*CombinedConfig).Manager()
-
-	portNetwork, err := GetNetworkById(d, manager, nil)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	targetVdc, err := GetVdcByVal(portNetwork.Vdc.Id, manager)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
 	firewallsCount := d.Get("firewall_templates.#").(int)
-	firewalls := make([]*bcc.FirewallTemplate, firewallsCount)
 	firewallsResourceData := d.Get("firewall_templates").(*schema.Set).List()
+
+	_, networkOk := d.GetOk("network_id")
+	if networkOk {
+		portNetwork, err = GetNetworkById(d, manager, nil)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	_, vdcOk := d.GetOk("vdc_id")
+	if vdcOk {
+		vdcId = d.Get("vdc_id").(string)
+	} else {
+		vdcId = portNetwork.Vdc.Id
+	}
+
+	vdc, err := GetVdcByVal(vdcId, manager)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	firewalls := make([]*bcc.FirewallTemplate, firewallsCount)
 	for j, firewallId := range firewallsResourceData {
 		portFirewall, err := manager.GetFirewallTemplate(firewallId.(string))
 		if err != nil {
@@ -56,22 +70,24 @@ func resourcePortCreate(ctx context.Context, d *schema.ResourceData, meta interf
 		firewalls[j] = portFirewall
 	}
 
-	ipAddressInterface, ok := d.GetOk("ip_address")
-	var ipAddressStr string
-	if ok {
+	ipAddressInterface, ipOk := d.GetOk("ip_address")
+	if ipOk {
 		ipAddressStr = ipAddressInterface.(string)
 	} else {
 		ipAddressStr = "0.0.0.0"
 	}
 
-	log.Printf("[DEBUG] subnetInfo: %#v", targetVdc)
+	log.Printf("[DEBUG] subnetInfo: %#v", vdc)
 	newPort := bcc.NewPort(portNetwork, firewalls, ipAddressStr)
 	newPort.Tags = unmarshalTagNames(d.Get("tags"))
+	if vdcOk {
+		newPort.Vdc = vdc
+	}
 
-	if err = targetVdc.WaitLock(); err != nil {
+	if err = vdc.WaitLock(); err != nil {
 		return diag.FromErr(err)
 	}
-	if err = targetVdc.CreateEmptyPort(&newPort); err != nil {
+	if err = vdc.CreateEmptyPort(&newPort); err != nil {
 		return diag.FromErr(err)
 	}
 	if err = newPort.WaitLock(); err != nil {
@@ -103,7 +119,7 @@ func resourcePortRead(ctx context.Context, d *schema.ResourceData, meta interfac
 	fields := map[string]interface{}{
 		"ip_address":         port.IpAddress,
 		"network_id":         port.Network.ID,
-		"vdc_id":             port.Network.Vdc.Id,
+		"vdc_id":             port.Vdc.ID,
 		"tags":               marshalTagNames(port.Tags),
 		"firewall_templates": firewalls,
 	}

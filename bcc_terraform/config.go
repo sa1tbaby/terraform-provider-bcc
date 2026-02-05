@@ -3,6 +3,7 @@ package bcc_terraform
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/basis-cloud/bcc-go/bcc"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -10,14 +11,16 @@ import (
 )
 
 type Config struct {
-	Token            string
-	CaCert           string
-	Cert             string
-	CertKey          string
-	Insecure         bool
-	APIEndpoint      string
-	TerraformVersion string
-	ClientID         string
+	Token              string
+	CaCert             string
+	Cert               string
+	CertKey            string
+	Insecure           bool
+	APIEndpoint        string
+	APIRequestTimeout  time.Duration
+	APIRequestInterval time.Duration
+	TerraformVersion   string
+	ClientID           string
 }
 
 type CombinedConfig struct {
@@ -37,6 +40,8 @@ func (c *Config) Client() (*CombinedConfig, diag.Diagnostics) {
 	manager.Logger = logger
 	manager.BaseURL = strings.TrimSuffix(c.APIEndpoint, "/")
 	manager.ClientID = c.ClientID
+	manager.RequestTimeout = c.APIRequestTimeout
+	manager.RequestInterval = c.APIRequestInterval
 	manager.UserAgent = fmt.Sprintf("Terraform/%s", c.TerraformVersion)
 
 	return &CombinedConfig{

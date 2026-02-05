@@ -10,13 +10,13 @@ func (args *Arguments) injectContextGetHypervisor() {
 			Type:        schema.TypeString,
 			Optional:    true,
 			Computed:    true,
-			Description: "name of the Hypervisor",
+			Description: "resource pool name",
 		},
 		"id": {
 			Type:        schema.TypeString,
 			Optional:    true,
 			Computed:    true,
-			Description: "id of the Hypervisor",
+			Description: "resource pool identifier",
 		},
 	})
 }
@@ -36,17 +36,17 @@ func (args *Arguments) injectResultHypervisor() {
 		"id": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "id of the Hypervisor",
+			Description: "resource pool identifier",
 		},
 		"name": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "name of the Hypervisor",
+			Description: "resource pool name",
 		},
 		"type": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "type of the Hypervisor",
+			Description: "resource pool type",
 		},
 	})
 }

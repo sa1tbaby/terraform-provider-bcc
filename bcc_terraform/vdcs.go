@@ -92,7 +92,7 @@ func (args *Arguments) injectContextVdcById() {
 			Type:        schema.TypeString,
 			Required:    true,
 			ForceNew:    true,
-			Description: "id of the VDC",
+			Description: "VDC identifier",
 			ValidateDiagFunc: validation.ToDiagFunc(
 				validation.StringIsNotEmpty,
 			),

@@ -34,22 +34,22 @@ func (args *Arguments) injectResultPublicKey() {
 		"id": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "id of the Public Key",
+			Description: "Public Key identifier",
 		},
 		"name": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "name of the Public Key",
+			Description: "Public Key name",
 		},
 		"fingerprint": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "fingerprint of the  Public Key",
+			Description: "Public Key fingerprint",
 		},
 		"public_key": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "public_key of the Public Key instance",
+			Description: "public key text",
 		},
 	})
 }

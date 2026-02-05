@@ -42,12 +42,9 @@ func dataSourceVmRead(ctx context.Context, d *schema.ResourceData, meta interfac
 			return diag.Errorf("Error getting vm: %s", err)
 		}
 	}
-	flattenPorts := make([]map[string]interface{}, 0, len(targetVm.Ports))
-	for _, port := range targetVm.Ports {
-		flattenPorts = append(flattenPorts, map[string]interface{}{
-			"id":         port.ID,
-			"ip_address": port.IpAddress,
-		})
+	flattenPorts := make([]string, len(targetVm.Ports))
+	for i, port := range targetVm.Ports {
+		flattenPorts[i] = port.ID
 	}
 
 	flatten := map[string]interface{}{

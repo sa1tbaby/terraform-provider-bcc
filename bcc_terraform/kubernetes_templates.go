@@ -19,13 +19,13 @@ func (args *Arguments) injectContextGetKubernetesTemplate() {
 			Type:        schema.TypeString,
 			Optional:    true,
 			Computed:    true,
-			Description: "name of the Kubernetes Template",
+			Description: "Kubernetes Template name",
 		},
 		"id": {
 			Type:        schema.TypeString,
 			Optional:    true,
 			Computed:    true,
-			Description: "id of the Kubernetes Template",
+			Description: "Kubernetes Template identifier",
 		},
 	})
 }
@@ -35,27 +35,27 @@ func (args *Arguments) injectResultKubernetesTemplate() {
 		"id": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "id of the Kubernetes Template",
+			Description: "Kubernetes Template identifier",
 		},
 		"name": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "name of the Kubernetes Template",
+			Description: "Kubernetes Template name",
 		},
 		"min_node_cpu": {
 			Type:        schema.TypeInt,
 			Computed:    true,
-			Description: "minimum cpu required for node by the Kubernetes Template",
+			Description: "minimum required number of virtual CPUs for the template",
 		},
 		"min_node_ram": {
 			Type:        schema.TypeInt,
 			Computed:    true,
-			Description: "minimum ram in GB required for node by the Kubernetes Template",
+			Description: "minimum required amount of RAM for the template, in GB",
 		},
 		"min_node_hdd": {
 			Type:        schema.TypeInt,
 			Computed:    true,
-			Description: "minimum disk size in GB required for node by the Kubernetes Template",
+			Description: "minimum required disk size for the template, in GB",
 		},
 	})
 }

@@ -11,13 +11,13 @@ func (args *Arguments) injectContextGetNetwork() {
 			Type:        schema.TypeString,
 			Optional:    true,
 			Computed:    true,
-			Description: "name of the Network",
+			Description: "Network name",
 		},
 		"id": {
 			Type:        schema.TypeString,
 			Optional:    true,
 			Computed:    true,
-			Description: "id of the Network",
+			Description: "Network identifier",
 		},
 	})
 }
@@ -113,17 +113,17 @@ func (args *Arguments) injectResultNetwork() {
 		"id": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "id of the Network",
+			Description: "Network identifier",
 		},
 		"name": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "name of the Network",
+			Description: "Network name",
 		},
 		"mtu": {
 			Type:        schema.TypeInt,
 			Computed:    true,
-			Description: "mtu of the Network",
+			Description: "maximum transmission unit (MTU) of packets in the network;",
 		},
 		"subnets": {
 			Type:        schema.TypeList,
@@ -134,38 +134,38 @@ func (args *Arguments) injectResultNetwork() {
 					"id": {
 						Type:        schema.TypeString,
 						Computed:    true,
-						Description: "id of the Subnet",
+						Description: "Subnet identifier",
 					},
 					"cidr": {
 						Type:        schema.TypeString,
 						Computed:    true,
-						Description: "cidr of the Subnet",
+						Description: "Subnet cidr",
 					},
 					"gateway": {
 						Type:        schema.TypeString,
 						Computed:    true,
-						Description: "gateway of the Subnet",
+						Description: "subnet gateway IP address",
 					},
 					"start_ip": {
 						Type:        schema.TypeString,
 						Computed:    true,
-						Description: "pool start ip of the Subnet",
+						Description: "starting IP address of the subnet IP range",
 					},
 					"end_ip": {
 						Type:        schema.TypeString,
 						Computed:    true,
-						Description: "pool end ip of the Subnet",
+						Description: "ending IP address of the subnet IP range",
 					},
 					"dhcp": {
 						Type:        schema.TypeBool,
 						Computed:    true,
-						Description: "enable dhcp service of the Subnet",
+						Description: "whether DHCP is enabled for the subnet (true or false)",
 					},
 					"dns": {
 						Type:        schema.TypeList,
 						Computed:    true,
 						Elem:        &schema.Schema{Type: schema.TypeString},
-						Description: "dns servers list",
+						Description: "list of DNS servers for the subnet",
 					},
 				},
 			},

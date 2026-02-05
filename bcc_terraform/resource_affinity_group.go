@@ -61,12 +61,6 @@ func resourceAffinityGroupCreate(ctx context.Context, d *schema.ResourceData, me
 	newAffGp := bcc.NewAffinityGroup(config.Name, config.Description, config.Policy, nil)
 	newAffGp.Reboot = config.Reboot
 
-	for _, item := range config.vms {
-		_item := item.(map[string]interface{})
-		vm := bcc.MetaData{ID: _item["id"].(string)}
-		newAffGp.Vms = append(newAffGp.Vms, &vm)
-	}
-
 	if err := targetVdc.CreateAffinityGroup(&newAffGp); err != nil {
 		return diag.Errorf("[ERROR-042]: crash via creating AffinityGroup: %s", err)
 	}
@@ -136,18 +130,6 @@ func resourceAffinityGroupUpdate(ctx context.Context, d *schema.ResourceData, me
 	if d.HasChange("reboot") {
 		needUpdate = true
 		affGroup.Reboot = d.Get("reboot").(bool)
-	}
-
-	if d.HasChange("vms") {
-		needUpdate = true
-		raw_vms := d.Get("vms").([]interface{})
-		vms := make([]*bcc.MetaData, len(raw_vms))
-
-		for i, item := range raw_vms {
-			_item := item.(map[string]interface{})
-			vm := bcc.MetaData{ID: _item["id"].(string)}
-			vms[i] = &vm
-		}
 	}
 
 	if needUpdate {

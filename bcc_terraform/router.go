@@ -22,7 +22,9 @@ func (args *Arguments) injectContextGetRouter() {
 	})
 }
 
-func (args *Arguments) injectResultRouter() {
+func (args *Arguments) injectContextDataRouter() {
+	routes := Defaults()
+	routes.injectCmpRouterRoutes()
 
 	args.merge(Arguments{
 		"id": {
@@ -35,12 +37,48 @@ func (args *Arguments) injectResultRouter() {
 			Computed:    true,
 			Description: "name of the Router",
 		},
+		"is_default": {
+			Type:        schema.TypeBool,
+			Computed:    true,
+			Description: "Set if this is default router",
+		},
+		"floating": {
+			Type:        schema.TypeBool,
+			Computed:    true,
+			Description: "Enable floating ip for the Vm",
+		},
+		"floating_id": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "Floating id address.",
+		},
+		"ports": {
+			Type:        schema.TypeList,
+			Computed:    true,
+			Description: "List of Ports connected to the router",
+			Elem:        &schema.Schema{Type: schema.TypeString},
+		},
+		"system": {
+			Type:        schema.TypeBool,
+			Computed:    true,
+			Deprecated:  "param has been removed",
+			Description: "Determinate if router is system.",
+		},
+		"routes": {
+			Type:        schema.TypeList,
+			Computed:    true,
+			Description: "List of Routes connected to the router",
+			Elem: &schema.Resource{
+				Schema: routes,
+			},
+		},
+		"tags": newTagNamesDataSchema("tags of the router"),
 	})
 }
 
-func (args *Arguments) injectResultListRouter() {
+func (args *Arguments) injectContextDataRouterList() {
 	Router := Defaults()
-	Router.injectResultRouter()
+	Router.injectContextDataRouter()
 
 	args.merge(Arguments{
 		"routers": {
@@ -53,7 +91,7 @@ func (args *Arguments) injectResultListRouter() {
 	})
 }
 
-func (args *Arguments) injectRouterRoutes() {
+func (args *Arguments) injectReqRouterRoutes() {
 	args.merge(Arguments{
 		"destination": {
 			Type:        schema.TypeString,
@@ -68,9 +106,24 @@ func (args *Arguments) injectRouterRoutes() {
 	})
 }
 
-func (args *Arguments) injectCreateRouter() {
+func (args *Arguments) injectCmpRouterRoutes() {
+	args.merge(Arguments{
+		"destination": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "route destination",
+		},
+		"next_hop": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "next for before destination",
+		},
+	})
+}
+
+func (args *Arguments) injectContextResourceRouter() {
 	routes := Defaults()
-	routes.injectRouterRoutes()
+	routes.injectReqRouterRoutes()
 
 	args.merge(Arguments{
 		"name": {

@@ -49,6 +49,12 @@ func (args *Arguments) injectCreateVm() {
 			),
 			Description: "name of the Vm",
 		},
+		"description": {
+			Type:        schema.TypeString,
+			Optional:    true,
+			Computed:    true,
+			Description: "description of the Vm",
+		},
 		"platform": {
 			Type:        schema.TypeString,
 			Optional:    true,
@@ -75,7 +81,6 @@ func (args *Arguments) injectCreateVm() {
 		"user_data": {
 			Type:        schema.TypeString,
 			Required:    true,
-			ForceNew:    true,
 			Description: "script for cloud-init",
 		},
 		"system_disk": {
@@ -152,7 +157,6 @@ func (args *Arguments) injectCreateVm() {
 		"affinity_groups": {
 			Type:        schema.TypeList,
 			Optional:    true,
-			Computed:    true,
 			MinItems:    1,
 			MaxItems:    10,
 			Description: "List of Affinity Groups connected to the Vm",
@@ -162,6 +166,9 @@ func (args *Arguments) injectCreateVm() {
 }
 
 func (args *Arguments) injectResultVm() {
+	systemDisk := Defaults()
+	systemDisk.injectDataSystemDisk()
+
 	args.merge(Arguments{
 		"id": {
 			Type:        schema.TypeString,
@@ -172,6 +179,11 @@ func (args *Arguments) injectResultVm() {
 			Type:        schema.TypeString,
 			Computed:    true,
 			Description: "name of the Vm",
+		},
+		"description": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "description of the Vm",
 		},
 		"cpu": {
 			Type:        schema.TypeInt,
@@ -205,32 +217,25 @@ func (args *Arguments) injectResultVm() {
 		},
 		"power": {
 			Type:        schema.TypeBool,
-			Optional:    true,
-			Default:     true,
+			Computed:    true,
 			Description: "power of vw on/off",
 		},
 		"ports": {
 			Type:        schema.TypeList,
-			Optional:    true,
 			Computed:    true,
-			MinItems:    1,
-			MaxItems:    10,
 			Description: "List of Ports connected to the Vm",
 			Deprecated:  "Use networks instead of ports",
 			Elem:        &schema.Schema{Type: schema.TypeString},
 		},
 		"networks": {
 			Type:        schema.TypeList,
-			Optional:    true,
 			Computed:    true,
-			MinItems:    1,
-			MaxItems:    10,
 			Description: "List of Ports connected to the Vm",
 			Elem: &schema.Resource{
 				Schema: map[string]*schema.Schema{
 					"id": {
 						Type:        schema.TypeString,
-						Required:    true,
+						Computed:    true,
 						Description: "Id of the network",
 					},
 					"ip_address": {
@@ -241,6 +246,35 @@ func (args *Arguments) injectResultVm() {
 				},
 			},
 		},
+		"platform": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "platform of the Vm",
+		},
+		"system_disk": {
+			Type:        schema.TypeList,
+			Computed:    true,
+			Elem:        &schema.Resource{Schema: systemDisk},
+			Description: "System disk.",
+		},
+		"disks": {
+			Type:        schema.TypeSet,
+			Computed:    true,
+			Elem:        &schema.Schema{Type: schema.TypeString},
+			Description: "list of Disks attached to the Vm",
+		},
+		"hot_add": {
+			Type:        schema.TypeBool,
+			Computed:    true,
+			Description: "Enabling resources hot swap for vm",
+		},
+		"affinity_groups": {
+			Type:        schema.TypeList,
+			Computed:    true,
+			Elem:        &schema.Schema{Type: schema.TypeString},
+			Description: "List of Affinity Groups connected to the Vm",
+		},
+		"tags": newTagNamesDataSchema("tags of the Vm"),
 	})
 }
 
@@ -262,6 +296,33 @@ func (args *Arguments) injectSystemDisk() {
 		"storage_profile_id": {
 			Type:     schema.TypeString,
 			Required: true,
+		},
+		"external_id": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "external id of the volume. It can be empty",
+		},
+	})
+}
+
+func (args *Arguments) injectDataSystemDisk() {
+	args.merge(Arguments{
+		"id": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "id of the System Disk",
+		},
+		"name": {
+			Type:     schema.TypeString,
+			Computed: true,
+		},
+		"size": {
+			Type:     schema.TypeInt,
+			Computed: true,
+		},
+		"storage_profile_id": {
+			Type:     schema.TypeString,
+			Computed: true,
 		},
 		"external_id": {
 			Type:        schema.TypeString,

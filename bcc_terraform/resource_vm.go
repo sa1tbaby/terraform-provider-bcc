@@ -15,7 +15,7 @@ import (
 func resourceVm() *schema.Resource {
 	args := Defaults()
 	args.injectCreateVm()
-	args.injectContextVdcById()
+	args.injectContextRequiredVdc()
 
 	return &schema.Resource{
 		CreateContext: resourceVmCreate,
@@ -29,14 +29,22 @@ func resourceVm() *schema.Resource {
 			Create: schema.DefaultTimeout(10 * time.Minute),
 			Delete: schema.DefaultTimeout(10 * time.Minute),
 		},
-		Schema: args,
+		CustomizeDiff: resourceVmCustomizeDiff,
+		Schema:        args,
 	}
+}
+
+func resourceVmCustomizeDiff(_ context.Context, d *schema.ResourceDiff, _ interface{}) error {
+	if d.HasChange("floating") {
+		d.SetNewComputed("floating_ip")
+	}
+	return nil
 }
 
 func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 
-	targetVdc, err := GetVdcById(d, manager)
+	vdc, err := GetVdcById(d, manager)
 	if err != nil {
 		return diag.Errorf("[ERROR-021]: %s", err)
 	}
@@ -48,6 +56,7 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 
 	config := struct {
 		name                string
+		description         string
 		cpu                 int
 		ram                 float64
 		platform            string
@@ -61,6 +70,7 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 	}{
 		name:                d.Get("name").(string),
 		cpu:                 d.Get("cpu").(int),
+		description:         d.Get("description").(string),
 		ram:                 d.Get("ram").(float64),
 		platform:            d.Get("platform").(string),
 		userData:            d.Get("user_data").(string),
@@ -73,23 +83,23 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 	}
 
 	// System disk creation
-	storageProfile, err := targetVdc.GetStorageProfile(config.sysStorageProfileId)
+	storageProfile, err := vdc.GetStorageProfile(config.sysStorageProfileId)
 	if err != nil {
 		return diag.Errorf("[ERROR-021]: %s", err)
 	}
 	systemDiskList := make([]*bcc.Disk, 1)
-	newDisk := bcc.NewDisk("Основной диск", config.sysDiskSize, storageProfile)
-	systemDiskList[0] = &newDisk
+	systemDisk := bcc.NewDisk("Основной диск", config.sysDiskSize, storageProfile)
+	systemDiskList[0] = &systemDisk
 
 	// Ports creation
 	portsIds := collectVmNetworks(d)
-	ports := make([]*bcc.Port, len(portsIds))
+	portList := make([]*bcc.Port, len(portsIds))
 	for i, portId := range portsIds {
 		port, err := manager.GetPort(portId)
 		if err != nil {
 			return diag.Errorf("[ERROR-021]: %s", err)
 		}
-		ports[i] = port
+		portList[i] = port
 	}
 
 	var floatingIp *string = nil
@@ -98,53 +108,62 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 		floatingIp = &floatingIpStr
 	}
 
-	newVm := bcc.NewVm(
+	vm := bcc.NewVm(
 		config.name, config.cpu, config.ram, template, nil,
-		&config.userData, ports, systemDiskList, floatingIp,
+		&config.userData, portList, systemDiskList, floatingIp,
 	)
+	vm.Description = config.description
+	vm.HotAdd = config.hotAdd
+	vm.Tags = unmarshalTagNames(d.Get("tags"))
 
 	if config.platform != "" {
-		newVm.Platform, err = manager.GetPlatform(config.platform)
+		vm.Platform, err = manager.GetPlatform(config.platform)
 		if err != nil {
 			return diag.Errorf("[ERROR-021]: crash via getting template: %s", err)
 		}
 	}
 
 	for _, item := range config.AffinityGroups {
-		newVm.AffinityGroups = append(newVm.AffinityGroups, &bcc.AffinityGroup{ID: item.(string)})
+		vm.AffinityGroups = append(vm.AffinityGroups, &bcc.AffinityGroup{ID: item.(string)})
+	}
+
+	if err = vdc.CreateVm(&vm); err != nil {
+		return diag.Errorf("[ERROR-021]: %s", err)
+	}
+	if err = vm.WaitLock(); err != nil {
+		return diag.Errorf("[ERROR-021]: %s", err)
 	}
 
 	for _, item := range config.disks {
-		configDisk, err := manager.GetDisk(item.(string))
+		disk, err := manager.GetDisk(item.(string))
 		if err != nil {
 			return diag.FromErr(err)
 		}
-		newVm.Disks = append(newVm.Disks, configDisk)
-	}
 
-	newVm.HotAdd = config.hotAdd
-	newVm.Tags = unmarshalTagNames(d.Get("tags"))
-
-	if err = targetVdc.CreateVm(&newVm); err != nil {
-		return diag.Errorf("[ERROR-021]: %s", err)
+		if disk.Vm != nil && disk.Vm.ID != vm.ID {
+			return diag.Errorf("[ERROR-021] disk %s is already attached to another vm. please detach it before conecting", disk.ID)
+		} else if disk.Vm == nil {
+			if err = vm.AttachDisk(disk); err != nil {
+				return diag.Errorf("[ERROR-021] crash via attaching disk with id='%s': %s", disk.ID, err)
+			}
+		}
 	}
-	if err = newVm.WaitLock(); err != nil {
-		return diag.Errorf("[ERROR-021]: %s", err)
-	}
-	log.Printf("[INFO] VM created, ID: %s", d.Id())
 
 	vmPower := d.Get("power").(bool)
 	if !vmPower {
-		if err = newVm.PowerOff(); err != nil {
+		if err = vm.PowerOff(); err != nil {
 			return diag.Errorf("[ERROR-021]: %s", err)
 		}
 	}
 
-	d.SetId(newVm.ID)
-	fields := map[string]interface{}{"user_data": config.userData}
+	fields := map[string]interface{}{
+		"id":        vm.ID,
+		"user_data": config.userData,
+	}
 	if err = setResourceDataFromMap(d, fields); err != nil {
 		return diag.Errorf("[ERROR-021]: %s", err)
 	}
+	log.Printf("[INFO] VM created, ID: %s", d.Id())
 
 	return resourceVmRead(ctx, d, meta)
 }
@@ -212,6 +231,7 @@ func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{
 	fields := map[string]interface{}{
 		"vdc_id":          vm.Vdc.ID,
 		"name":            vm.Name,
+		"description":     vm.Description,
 		"cpu":             vm.Cpu,
 		"ram":             vm.Ram,
 		"template_id":     vm.Template.ID,
@@ -223,18 +243,17 @@ func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{
 		"disks":           flattenDisks,
 		"ports":           flattenPorts,
 		"networks":        flattenNetworks,
-		"floating":        vm.Floating != nil,
+		"floating":        false,
 		"floating_ip":     "",
+	}
+
+	if vm.Floating != nil {
+		fields["floating"] = true
+		fields["floating_ip"] = vm.Floating.IpAddress
 	}
 
 	if err = setResourceDataFromMap(d, fields); err != nil {
 		return diag.FromErr(err)
-	}
-
-	if vm.Floating != nil {
-		if err = d.Set("floating_ip", vm.Floating.IpAddress); err != nil {
-			return diag.Errorf("error with setting floating_ip: %w", err)
-		}
 	}
 
 	return nil
@@ -247,12 +266,17 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 		return diag.Errorf("[ERROR-021]: %s", err)
 	}
 
-	hasFlavorChanged := false
-	needUpdate := false
-
 	vm, err := manager.GetVm(d.Id())
 	if err != nil {
 		return diag.Errorf("[ERROR-021]: %s", err)
+	}
+
+	lifeCycle := &struct {
+		NeedUpdate bool
+		NeedReload bool
+	}{
+		NeedUpdate: false,
+		NeedReload: false,
 	}
 
 	if diags := syncVmNetworks(d, manager, vm); diags.HasError() {
@@ -261,37 +285,34 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 
 	// Detect vm changes
 	if d.HasChange("name") {
-		needUpdate = true
+		lifeCycle.NeedUpdate = true
 		vm.Name = d.Get("name").(string)
 	}
 
+	if d.HasChange("description") {
+		lifeCycle.NeedUpdate = true
+		vm.Description = d.Get("description").(string)
+	}
+
 	if d.HasChange("cpu") || d.HasChange("ram") {
-		needUpdate = true
-		hasFlavorChanged = true
+		lifeCycle.NeedUpdate = true
+		if vm.Power && !vm.HotAdd {
+			lifeCycle.NeedReload = true
+		}
 		vm.Cpu = d.Get("cpu").(int)
 		vm.Ram = d.Get("ram").(float64)
 	}
 
 	if d.HasChange("hot_add") {
-		needUpdate = true
+		lifeCycle.NeedUpdate = true
+		if vm.Power {
+			lifeCycle.NeedReload = true
+		}
 		vm.HotAdd = d.Get("hot_add").(bool)
 	}
 
-	needPowerOn := false
-	if hasFlavorChanged && !vm.HotAdd && vm.Power {
-		if err = vm.PowerOff(); err != nil {
-			return diag.Errorf("[ERROR-021]: %s", err)
-		}
-		needPowerOn = true
-	}
-
-	if d.HasChange("tags") {
-		needUpdate = true
-		vm.Tags = unmarshalTagNames(d.Get("tags"))
-	}
-
 	if d.HasChange("affinity_groups") {
-		needUpdate = true
+		lifeCycle.NeedUpdate = true
 		var _affGrs []*bcc.AffinityGroup
 		for _, item := range d.Get("affinity_groups").([]interface{}) {
 			_affGrs = append(_affGrs, &bcc.AffinityGroup{ID: item.(string)})
@@ -299,13 +320,24 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 		vm.AffinityGroups = _affGrs
 	}
 
-	if needUpdate {
+	if d.HasChange("tags") {
+		lifeCycle.NeedUpdate = true
+		vm.Tags = unmarshalTagNames(d.Get("tags"))
+	}
+
+	if lifeCycle.NeedReload {
+		if err = vm.PowerOff(); err != nil {
+			return diag.Errorf("[ERROR-021]: %s", err)
+		}
+	}
+
+	if lifeCycle.NeedUpdate {
 		if err := repeatOnError(vm.Update, vm); err != nil {
 			return diag.Errorf("[ERROR-021]: crash via updating vm: %s", err)
 		}
 	}
 
-	if needPowerOn {
+	if lifeCycle.NeedReload {
 		if err = vm.PowerOn(); err != nil {
 			return diag.FromErr(err)
 		}
@@ -430,9 +462,6 @@ func syncVmNetworks(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) (e
 
 	if olfFloating.(bool) && !newFloating.(bool) {
 		vm.Floating = &bcc.Port{IpAddress: nil}
-		if err := d.Set("floating", vm.Floating != nil); err != nil {
-			return diag.Errorf("Error setting floating: %s", err)
-		}
 		if err := repeatOnError(vm.Update, vm); err != nil {
 			return diag.Errorf("Error with deletting floating for vm: %s", err)
 		}
@@ -458,9 +487,6 @@ func syncVmNetworks(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) (e
 
 	if newFloating.(bool) {
 		vm.Floating = &bcc.Port{ID: "RANDOM_FIP"}
-		if err := d.Set("floating", vm.Floating != nil); err != nil {
-			return diag.Errorf("Error setting floating: %s", err)
-		}
 		if err := repeatOnError(vm.Update, vm); err != nil {
 			return diag.Errorf("Error with adding floating for vm: %s", err)
 		}
@@ -547,28 +573,28 @@ func disconnectVmOldPort(portId string, manager *bcc.Manager, vm *bcc.Vm) diag.D
 
 func syncVmDisks(d *schema.ResourceData, manager *bcc.Manager, vdc *bcc.Vdc, vm *bcc.Vm) (err error) {
 	oldDisks, newDisks := d.GetChange("disks")
-	newDisksSet := make(map[string]bool)
-	oldDisksSet := make(map[string]bool)
+	newDisksMap := make(map[string]bool)
+	oldDisksMap := make(map[string]bool)
 
 	for _, item := range newDisks.(*schema.Set).List() {
-		newDisksSet[item.(string)] = true
+		newDisksMap[item.(string)] = true
 	}
 	for _, item := range oldDisks.(*schema.Set).List() {
 		_item := item.(string)
 
-		if newDisksSet[_item] {
-			delete(newDisksSet, _item)
+		if newDisksMap[_item] {
+			delete(newDisksMap, _item)
 		} else {
-			oldDisksSet[_item] = true
+			oldDisksMap[_item] = true
 		}
 	}
 
-	if err = detachVmDisks(oldDisksSet, manager, vm); err != nil {
+	if err = detachVmDisks(oldDisksMap, manager, vm); err != nil {
 		return fmt.Errorf("crash via detaching vm disks: %s", err)
 	}
 
-	if err = attachVmDisks(newDisksSet, manager, vm); err != nil {
-		return fmt.Errorf("crash via detaching vm disks: %s", err)
+	if err = attachVmDisks(newDisksMap, manager, vm); err != nil {
+		return fmt.Errorf("crash via attaching vm disks: %s", err)
 	}
 
 	// System disk resize
@@ -605,7 +631,10 @@ func syncVmDisks(d *schema.ResourceData, manager *bcc.Manager, vdc *bcc.Vdc, vm 
 }
 
 func attachVmDisks(disks map[string]bool, manager *bcc.Manager, vm *bcc.Vm) (err error) {
-	for diskId, _ := range disks {
+	for diskId, ok := range disks {
+		if !ok {
+			continue
+		}
 		disk, err := manager.GetDisk(diskId)
 		if err != nil {
 			return fmt.Errorf("disk with id %s not found: %s", diskId, err)
@@ -624,7 +653,10 @@ func attachVmDisks(disks map[string]bool, manager *bcc.Manager, vm *bcc.Vm) (err
 }
 
 func detachVmDisks(disks map[string]bool, manager *bcc.Manager, vm *bcc.Vm) (err error) {
-	for diskId, _ := range disks {
+	for diskId, ok := range disks {
+		if !ok {
+			continue
+		}
 		disk, err := manager.GetDisk(diskId)
 		if err != nil {
 			return fmt.Errorf("disk with id %s not found: %s", diskId, err)

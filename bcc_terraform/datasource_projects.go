@@ -11,7 +11,7 @@ import (
 
 func dataSourceProjects() *schema.Resource {
 	args := Defaults()
-	args.injectResultListProject()
+	args.injectContextDataProjectList()
 
 	return &schema.Resource{
 		ReadContext: dataSourceProjectsRead,
@@ -22,28 +22,32 @@ func dataSourceProjects() *schema.Resource {
 func dataSourceProjectsRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 
-	allProjects, err := manager.GetProjects()
+	projectList, err := manager.GetProjects()
 	if err != nil {
-		return diag.Errorf("Error getting projects: %s", err)
+		return diag.Errorf("[ERROR-003] crash via getting projects: %s", err)
 	}
 
-	flattenedRecords := make([]map[string]interface{}, len(allProjects))
-	for i, project := range allProjects {
-		flattenedRecords[i] = map[string]interface{}{
+	projectMap := make([]map[string]interface{}, len(projectList))
+	for i, project := range projectList {
+		projectMap[i] = map[string]interface{}{
 			"id":   project.ID,
 			"name": project.Name,
+			"tags": marshalTagNames(project.Tags),
 		}
 	}
 
-	hash, err := hashstructure.Hash(allProjects, hashstructure.FormatV2, nil)
+	hash, err := hashstructure.Hash(projectList, hashstructure.FormatV2, nil)
 	if err != nil {
-		diag.Errorf("unable to set `projects` attribute: %s", err)
+		diag.Errorf("[ERROR-003] crash via calculate hash: %s", err)
 	}
 
-	d.SetId(fmt.Sprintf("projects/%d", hash))
+	fields := map[string]interface{}{
+		"id":       fmt.Sprintf("projects/%d", hash),
+		"projects": projectMap,
+	}
 
-	if err := d.Set("projects", flattenedRecords); err != nil {
-		return diag.Errorf("unable to set `projects` attribute: %s", err)
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-003] crash via set attrs: %s", err)
 	}
 
 	return nil

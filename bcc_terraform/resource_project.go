@@ -12,7 +12,7 @@ import (
 
 func resourceProject() *schema.Resource {
 	args := Defaults()
-	args.injectCreateProject()
+	args.injectContextResourceProject()
 
 	return &schema.Resource{
 		CreateContext: resourceProjectCreate,
@@ -28,38 +28,44 @@ func resourceProject() *schema.Resource {
 
 func resourceProjectCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	client_id := manager.ClientID
-	var client *bcc.Client
 	var err error
 
-	if client_id != "" {
-		client, err = manager.GetClient(client_id)
+	fields := struct {
+		name     string
+		clientId string
+		client   *bcc.Client
+	}{
+		name:     d.Get("name").(string),
+		clientId: manager.ClientID,
+		client:   nil,
+	}
+
+	if fields.clientId != "" {
+		fields.client, err = manager.GetClient(fields.clientId)
 		if err != nil {
-			return diag.Errorf("Error getting client: %s", err)
+			return diag.Errorf("[ERROR-002] crash via getting client: %s", err)
 		}
 	} else {
 		allClients, err := manager.GetClients()
 		if err != nil {
-			return diag.Errorf("Error there are no clients available for management: %s", err)
+			return diag.Errorf("[ERROR-002] crash via getting client: %s", err)
 		}
 		if len(allClients) == 0 {
-			return diag.Errorf("There are no available clients")
+			return diag.Errorf("[ERROR-002] there are no available clients")
 		}
 		if len(allClients) > 1 {
-			return diag.Errorf("More than one client available for you")
+			return diag.Errorf("[ERROR-002] more than one client available for you")
 		}
 
-		client = allClients[0]
+		fields.client = allClients[0]
 	}
 
-	project := bcc.NewProject(
-		d.Get("name").(string),
-	)
+	project := bcc.NewProject(fields.name)
 	project.Tags = unmarshalTagNames(d.Get("tags"))
 	log.Printf("[DEBUG] Project create request: %#v", project)
-	err = client.CreateProject(&project)
-	if err != nil {
-		return diag.Errorf("id: Error creating project: %s", err)
+
+	if err = fields.client.CreateProject(&project); err != nil {
+		return diag.Errorf("[ERROR-002] crash via creating project: %s", err)
 	}
 	project.WaitLock()
 
@@ -73,12 +79,7 @@ func resourceProjectRead(ctx context.Context, d *schema.ResourceData, meta inter
 	manager := meta.(*CombinedConfig).Manager()
 	project, err := manager.GetProject(d.Id())
 	if err != nil {
-		if err.(*bcc.ApiError).Code() == 404 {
-			d.SetId("")
-			return nil
-		} else {
-			return diag.Errorf("id: Error getting project: %s", err)
-		}
+		resourceReadCheck(d, err, "[ERROR-002]:")
 	}
 
 	fields := map[string]interface{}{
@@ -87,7 +88,7 @@ func resourceProjectRead(ctx context.Context, d *schema.ResourceData, meta inter
 	}
 
 	if err := setResourceDataFromMap(d, fields); err != nil {
-		return diag.FromErr(err)
+		return diag.Errorf("[ERROR-002] crash via set attrs: %s", err)
 	}
 
 	return nil
@@ -98,7 +99,7 @@ func resourceProjectUpdate(ctx context.Context, d *schema.ResourceData, meta int
 
 	project, err := manager.GetProject(d.Id())
 	if err != nil {
-		return diag.Errorf("id: Error getting project: %s", err)
+		return diag.Errorf("[ERROR-002] crash via getting project: %s", err)
 	}
 
 	if d.HasChange("name") {
@@ -107,13 +108,10 @@ func resourceProjectUpdate(ctx context.Context, d *schema.ResourceData, meta int
 	if d.HasChange("tags") {
 		project.Tags = unmarshalTagNames(d.Get("tags"))
 	}
-	err = project.Update()
-	if err != nil {
-		return diag.Errorf("name: Error rename project: %s", err)
+	if err = project.Update(); err != nil {
+		return diag.Errorf("[ERROR-002] crash via update project: %s", err)
 	}
 	project.WaitLock()
-
-	log.Printf("[INFO] Updated Project, ID: %#v", project)
 
 	return resourceProjectRead(ctx, d, meta)
 }
@@ -121,21 +119,15 @@ func resourceProjectUpdate(ctx context.Context, d *schema.ResourceData, meta int
 func resourceProjectDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 
-	projectId := d.Id()
-
-	project, err := manager.GetProject(projectId)
+	project, err := manager.GetProject(d.Id())
 	if err != nil {
-		return diag.Errorf("id: Error getting project: %s", err)
+		return diag.Errorf("[ERROR-002] crash via getting project: %s", err)
 	}
 
-	err = project.Delete()
-	if err != nil {
-		return diag.Errorf("Error deleting project: %s", err)
+	if err = project.Delete(); err != nil {
+		return diag.Errorf("[ERROR-002] crash via deleting project: %s", err)
 	}
 	project.WaitLock()
-
-	d.SetId("")
-	log.Printf("[INFO] Project deleted, ID: %s", projectId)
 
 	return nil
 }
@@ -144,8 +136,7 @@ func resourceProjectImport(ctx context.Context, d *schema.ResourceData, meta int
 	manager := meta.(*CombinedConfig).Manager()
 	project, err := manager.GetProject(d.Id())
 	if err != nil {
-		d.SetId("")
-		return nil, fmt.Errorf("id: Error getting project: %s", err)
+		return nil, fmt.Errorf("[ERROR-002] crash via getting project: %s", err)
 	}
 
 	d.SetId(project.ID)

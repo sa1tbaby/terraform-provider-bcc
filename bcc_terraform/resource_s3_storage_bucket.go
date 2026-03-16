@@ -16,7 +16,7 @@ import (
 func resourceS3StorageBucket() *schema.Resource {
 	args := Defaults()
 	args.injectCreateS3StorageBucket()
-	args.injectContextS3StorageById()
+	args.injectContextReqS3Id()
 
 	return &schema.Resource{
 		CreateContext: resourceS3StorageBucketCreate,

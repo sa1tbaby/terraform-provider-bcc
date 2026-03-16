@@ -13,8 +13,8 @@ import (
 
 func resourceS3Storage() *schema.Resource {
 	args := Defaults()
-	args.injectContextProjectById()
-	args.injectCreateS3Storage()
+	args.injectContextRequiredProject()
+	args.injectContextResourceS3()
 
 	return &schema.Resource{
 		CreateContext: resourceS3StorageCreate,

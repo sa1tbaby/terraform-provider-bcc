@@ -13,7 +13,7 @@ import (
 
 func resourceVdc() *schema.Resource {
 	args := Defaults()
-	args.injectCreateVdc()
+	args.injectContextResourceVdc()
 	args.injectContextHypervisorById()
 
 	return &schema.Resource{

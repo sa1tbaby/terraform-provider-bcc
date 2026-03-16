@@ -10,8 +10,9 @@ import (
 
 func dataSourcePort() *schema.Resource {
 	args := Defaults()
-	args.injectContextVdcById()
-	args.injectResultPort()
+	args.injectContextRequiredVdc()
+	args.injectContextDataPort()
+	args.injectContextGetPort()
 
 	return &schema.Resource{
 		ReadContext: dataSourcePortRead,
@@ -21,41 +22,45 @@ func dataSourcePort() *schema.Resource {
 
 func dataSourcePortRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	targetVdc, err := GetVdcById(d, manager)
+
+	vdc, err := GetVdcById(d, manager)
 	if err != nil {
-		return diag.Errorf("Error getting vdc: %s", err)
+		return diag.Errorf("[ERROR-026] crash via getting vdc: %s", err)
 	}
 
-	port_id := d.Get("id")
-	portIp := d.Get("ip_address")
-	flatten := make(map[string]interface{})
 	var targetPort *bcc.Port
+	_, okID := d.GetOk("id")
+	_, okIP := d.GetOk("ip_address")
 
-	if port_id != "" && portIp != "" {
-		return diag.Errorf("For getting the port must be specified id or ip")
-	}
-
-	if port_id != "" {
-		targetPort, err = GetPortById(d, manager, targetVdc)
+	if okID {
+		targetPort, err = GetPortById(d, manager, vdc)
 		if err != nil {
-			return diag.Errorf("Error getting port: %s", err)
+			return diag.Errorf("[ERROR-026] crash via getting port by id: %s", err)
+		}
+	} else if okIP {
+		targetPort, err = GetPortByIp(d, manager, vdc)
+		if err != nil {
+			return diag.Errorf("[ERROR-026] crash via getting port by ip: %s", err)
 		}
 	} else {
-		targetPort, err = GetPortByIp(d, manager, targetVdc)
-		if err != nil {
-			return diag.Errorf("Error getting port: %s", err)
-		}
-
+		return diag.Errorf("[ERROR-026] for getting the port must be specified id or ip")
 	}
 
-	flatten["id"] = targetPort.ID
-	flatten["ip_address"] = targetPort.IpAddress
-	flatten["network"] = targetPort.Network.ID
-
-	if err := setResourceDataFromMap(d, flatten); err != nil {
-		return diag.FromErr(err)
+	firewallTemplates := make([]interface{}, len(targetPort.FirewallTemplates))
+	for i, firewall := range targetPort.FirewallTemplates {
+		firewallTemplates[i] = firewall.ID
 	}
 
-	d.SetId(targetPort.ID)
+	fields := map[string]interface{}{
+		"id":                 targetPort.ID,
+		"ip_address":         targetPort.IpAddress,
+		"network":            targetPort.Network.ID,
+		"firewall_templates": firewallTemplates,
+		"tags":               marshalTagNames(targetPort.Tags),
+	}
+
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-026] crash via set attrs: %s", err)
+	}
 	return nil
 }

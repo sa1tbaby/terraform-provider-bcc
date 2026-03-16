@@ -3,7 +3,6 @@ package bcc_terraform
 import (
 	"context"
 	"log"
-
 	"time"
 
 	"github.com/basis-cloud/bcc-go/bcc"
@@ -13,7 +12,7 @@ import (
 
 func resourcePort() *schema.Resource {
 	args := Defaults()
-	args.injectCreatePort()
+	args.injectContextResourcePort()
 
 	return &schema.Resource{
 		CreateContext: resourcePortCreate,
@@ -32,69 +31,66 @@ func resourcePort() *schema.Resource {
 }
 
 func resourcePortCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	var err error
-	var vdcId string
-	var ipAddressStr string
-	var portNetwork *bcc.Network
-
 	manager := meta.(*CombinedConfig).Manager()
-	firewallsCount := d.Get("firewall_templates.#").(int)
-	firewallsResourceData := d.Get("firewall_templates").(*schema.Set).List()
+	fields := struct {
+		ipAddressStr          string
+		vdcId                 string
+		networkId             string
+		firewallsCount        int
+		firewallsResourceData []interface{}
+	}{
+		ipAddressStr:          d.Get("ip_address").(string),
+		vdcId:                 d.Get("vdc_id").(string),
+		networkId:             d.Get("network_id").(string),
+		firewallsCount:        d.Get("firewall_templates.#").(int),
+		firewallsResourceData: d.Get("firewall_templates").(*schema.Set).List(),
+	}
+	_, ipOk := d.GetOk("ip_address")
+	if !ipOk {
+		fields.ipAddressStr = "0.0.0.0"
+	}
 
-	_, networkOk := d.GetOk("network_id")
-	if networkOk {
-		portNetwork, err = GetNetworkById(d, manager, nil)
-		if err != nil {
-			return diag.FromErr(err)
-		}
+	network, err := manager.GetNetwork(fields.networkId)
+	if err != nil {
+		return diag.Errorf("[ERROR-045] crash via get network: %s", err)
 	}
 
 	_, vdcOk := d.GetOk("vdc_id")
-	if vdcOk {
-		vdcId = d.Get("vdc_id").(string)
-	} else {
-		vdcId = portNetwork.Vdc.Id
+	if !vdcOk {
+		fields.vdcId = network.Vdc.Id
 	}
 
-	vdc, err := GetVdcByVal(vdcId, manager)
+	vdc, err := manager.GetVdc(fields.vdcId)
 	if err != nil {
-		return diag.FromErr(err)
+		return diag.Errorf("[ERROR-045] crash via get vdc: %s", err)
 	}
 
-	firewalls := make([]*bcc.FirewallTemplate, firewallsCount)
-	for j, firewallId := range firewallsResourceData {
+	firewalls := make([]*bcc.FirewallTemplate, fields.firewallsCount)
+	for j, firewallId := range fields.firewallsResourceData {
 		portFirewall, err := manager.GetFirewallTemplate(firewallId.(string))
 		if err != nil {
-			return diag.Errorf("firewall_templates: Error getting Firewall Template: %s", err)
+			return diag.Errorf("[ERROR-045] crash via getting Firewall Template: %s", err)
 		}
 		firewalls[j] = portFirewall
 	}
 
-	ipAddressInterface, ipOk := d.GetOk("ip_address")
-	if ipOk {
-		ipAddressStr = ipAddressInterface.(string)
-	} else {
-		ipAddressStr = "0.0.0.0"
-	}
-
-	log.Printf("[DEBUG] subnetInfo: %#v", vdc)
-	newPort := bcc.NewPort(portNetwork, firewalls, ipAddressStr)
-	newPort.Tags = unmarshalTagNames(d.Get("tags"))
+	port := bcc.NewPort(network, firewalls, fields.ipAddressStr)
 	if vdcOk {
-		newPort.Vdc = vdc
+		port.Vdc = vdc
 	}
+	port.Tags = unmarshalTagNames(d.Get("tags"))
 
 	if err = vdc.WaitLock(); err != nil {
-		return diag.FromErr(err)
+		return diag.Errorf("[ERROR-045] crash via wait lock for vdc: %s", err)
 	}
-	if err = vdc.CreateEmptyPort(&newPort); err != nil {
-		return diag.FromErr(err)
+	if err = vdc.CreateEmptyPort(&port); err != nil {
+		return diag.Errorf("[ERROR-045] crash via creating empty port: %s", err)
 	}
-	if err = newPort.WaitLock(); err != nil {
-		return diag.FromErr(err)
+	if err = port.WaitLock(); err != nil {
+		return diag.Errorf("[ERROR-045] crash via wait lock for port: %s", err)
 	}
 
-	d.SetId(newPort.ID)
+	d.SetId(port.ID)
 	log.Printf("[INFO] Port created, ID: %s", d.Id())
 
 	return resourcePortRead(ctx, d, meta)
@@ -104,16 +100,12 @@ func resourcePortRead(ctx context.Context, d *schema.ResourceData, meta interfac
 	manager := meta.(*CombinedConfig).Manager()
 	port, err := manager.GetPort(d.Id())
 	if err != nil {
-		if err.(*bcc.ApiError).Code() == 404 {
-			d.SetId("")
-			return nil
-		} else {
-			return diag.Errorf("id: Error getting port: %s", err)
-		}
+		return resourceReadCheck(d, err, "[ERROR-045]:")
 	}
-	firewalls := make([]*string, len(port.FirewallTemplates))
+
+	firewallTemplates := make([]*string, len(port.FirewallTemplates))
 	for i, firewall := range port.FirewallTemplates {
-		firewalls[i] = &firewall.ID
+		firewallTemplates[i] = &firewall.ID
 	}
 
 	fields := map[string]interface{}{
@@ -121,11 +113,11 @@ func resourcePortRead(ctx context.Context, d *schema.ResourceData, meta interfac
 		"network_id":         port.Network.ID,
 		"vdc_id":             port.Vdc.ID,
 		"tags":               marshalTagNames(port.Tags),
-		"firewall_templates": firewalls,
+		"firewall_templates": firewallTemplates,
 	}
 
 	if err = setResourceDataFromMap(d, fields); err != nil {
-		return diag.Errorf("crash via setting resource data: %s", err)
+		return diag.Errorf("[ERROR-045] crash via set attrs: %s", err)
 	}
 
 	return nil
@@ -137,13 +129,15 @@ func resourcePortUpdate(ctx context.Context, d *schema.ResourceData, meta interf
 	portId := d.Id()
 	port, err := manager.GetPort(portId)
 	if err != nil {
-		return diag.Errorf("[ERROR-053]: %s", err)
+		return diag.Errorf("[ERROR-045] crash via get port: %s", err)
 	}
+
 	if d.HasChange("tags") {
 		port.Tags = unmarshalTagNames(d.Get("tags"))
 	}
-	ipAddress := d.Get("ip_address").(string)
+
 	if d.HasChange("ip_address") {
+		ipAddress := d.Get("ip_address").(string)
 		port.IpAddress = &ipAddress
 	}
 
@@ -154,7 +148,7 @@ func resourcePortUpdate(ctx context.Context, d *schema.ResourceData, meta interf
 		for j, firewallId := range firewallsResourceData {
 			portFirewall, err := manager.GetFirewallTemplate(firewallId.(string))
 			if err != nil {
-				return diag.Errorf("firewall_templates: Error updating Firewall Template: %s", err)
+				return diag.Errorf("[ERROR-045] crash via updating Firewall Template: %s", err)
 			}
 			firewalls[j] = portFirewall
 		}
@@ -162,10 +156,10 @@ func resourcePortUpdate(ctx context.Context, d *schema.ResourceData, meta interf
 		port.FirewallTemplates = firewalls
 	}
 	if err = port.Update(); err != nil {
-		return diag.FromErr(err)
+		return diag.Errorf("[ERROR-045] crash via updating port: %s", err)
 	}
 	if err = port.WaitLock(); err != nil {
-		return diag.FromErr(err)
+		return diag.Errorf("[ERROR-045] crash via port waitlock: %s", err)
 	}
 	return resourcePortRead(ctx, d, meta)
 }
@@ -176,17 +170,15 @@ func resourcePortDelete(ctx context.Context, d *schema.ResourceData, meta interf
 
 	port, err := manager.GetPort(portId)
 	if err != nil {
-		return diag.Errorf("id: Error getting port: %s", err)
+		return diag.Errorf("[ERROR-045] crash via getting port: %s", err)
 	}
 
 	err = port.ForceDelete()
 	if err != nil {
-		return diag.Errorf("Error deleting port: %s", err)
+		return diag.Errorf("[ERROR-045] crash via deleting port: %s", err)
 	}
 	port.WaitLock()
 
-	d.SetId("")
-	log.Printf("[INFO] Port deleted, ID: %s", portId)
 	return nil
 }
 
@@ -194,12 +186,8 @@ func resourcePortImport(ctx context.Context, d *schema.ResourceData, meta interf
 	manager := meta.(*CombinedConfig).Manager()
 	port, err := manager.GetPort(d.Id())
 	if err != nil {
-		if err.(*bcc.ApiError).Code() == 404 {
-			d.SetId("")
-			return nil, err
-		} else {
-			return nil, err
-		}
+		log.Printf("[ERROR-045] crash via getting port by id='%s': %s", d.Id(), err)
+		return nil, err
 	}
 
 	d.SetId(port.ID)

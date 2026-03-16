@@ -11,8 +11,8 @@ import (
 
 func dataSourceDnss() *schema.Resource {
 	args := Defaults()
-	args.injectContextProjectById()
-	args.injectResultListDns()
+	args.injectContextRequiredProject()
+	args.injectContextDataDnsList()
 
 	return &schema.Resource{
 		ReadContext: dataSourceDnssRead,
@@ -24,31 +24,35 @@ func dataSourceDnssRead(ctx context.Context, d *schema.ResourceData, meta interf
 	manager := meta.(*CombinedConfig).Manager()
 	project, err := GetProjectById(d, manager)
 	if err != nil {
-		return diag.Errorf("Error getting project: %s", err)
+		return diag.Errorf("[ERROR-029] crash via getting project: %s", err)
 	}
 
-	allDns, err := project.GetDnss()
+	dnsList, err := project.GetDnss()
 	if err != nil {
-		return diag.Errorf("Error retrieving dnss: %s", err)
+		return diag.Errorf("[ERROR-029] crash via retrieving dnss: %s", err)
 	}
 
-	flattenedRecords := make([]map[string]interface{}, len(allDns))
-	for i, dns := range allDns {
-		flattenedRecords[i] = map[string]interface{}{
+	dnsMap := make([]map[string]interface{}, len(dnsList))
+	for i, dns := range dnsList {
+		dnsMap[i] = map[string]interface{}{
 			"id":   dns.ID,
 			"name": dns.Name,
+			"tags": marshalTagNames(dns.Tags),
 		}
 	}
 
-	hash, err := hashstructure.Hash(allDns, hashstructure.FormatV2, nil)
+	hash, err := hashstructure.Hash(dnsList, hashstructure.FormatV2, nil)
 	if err != nil {
-		diag.Errorf("unable to set `dnss` attribute: %s", err)
+		diag.Errorf("[ERROR-029] crash via computing hash: %s", err)
 	}
 
-	d.SetId(fmt.Sprintf("dnss/%d", hash))
-
-	if err := d.Set("dnss", flattenedRecords); err != nil {
-		return diag.Errorf("unable to set `dnss` attribute: %s", err)
+	fields := map[string]interface{}{
+		"id":         fmt.Sprintf("dnss/%d", hash),
+		"project_id": project.Name,
+		"dnss":       dnsMap,
+	}
+	if err = setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-029] crash via set attrs: %s", err)
 	}
 
 	return nil

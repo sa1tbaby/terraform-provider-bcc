@@ -11,8 +11,8 @@ import (
 
 func dataSourceDisks() *schema.Resource {
 	args := Defaults()
-	args.injectContextVdcById()
-	args.injectResultListDisk()
+	args.injectContextRequiredVdc()
+	args.injectContextDataDiskList()
 
 	return &schema.Resource{
 		ReadContext: dataSourceDisksRead,
@@ -22,39 +22,42 @@ func dataSourceDisks() *schema.Resource {
 
 func dataSourceDisksRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	targetVdc, err := GetVdcById(d, manager)
+	vdc, err := GetVdcById(d, manager)
 	if err != nil {
-		return diag.Errorf("Error getting vdc: %s", err)
+		return diag.Errorf("[ERROR-016] crash via getting vdc: %s", err)
 	}
 
-	allDisks, err := targetVdc.GetDisks()
+	diskList, err := vdc.GetDisks()
 	if err != nil {
-		return diag.Errorf("Error retrieving disks: %s", err)
+		return diag.Errorf("[ERROR-016] crash via retrieving disks: %s", err)
 	}
 
-	flattenedRecords := make([]map[string]interface{}, len(allDisks))
-	for i, disk := range allDisks {
-		flattenedRecords[i] = map[string]interface{}{
+	diskMap := make([]map[string]interface{}, len(diskList))
+	for i, disk := range diskList {
+		diskMap[i] = map[string]interface{}{
 			"id":                   disk.ID,
 			"name":                 disk.Name,
 			"size":                 disk.Size,
 			"storage_profile_id":   disk.StorageProfile.ID,
 			"storage_profile_name": disk.StorageProfile.Name,
 			"external_id":          disk.ExternalID,
+			"tags":                 marshalTagNames(disk.Tags),
 		}
 	}
 
-	hash, err := hashstructure.Hash(allDisks, hashstructure.FormatV2, nil)
+	hash, err := hashstructure.Hash(diskList, hashstructure.FormatV2, nil)
 	if err != nil {
-		diag.Errorf("unable to set `disks` attribute: %s", err)
+		diag.Errorf("[ERROR-016] crash via compute hash: %s", err)
 	}
 
-	d.SetId(fmt.Sprintf("disks/%d", hash))
-	// d.Set("vdc_id", nil)
-	// d.Set("vdc_name", nil)
+	fields := map[string]interface{}{
+		"id":     fmt.Sprintf("disks/%d", hash),
+		"vdc_id": vdc.ID,
+		"disks":  diskMap,
+	}
 
-	if err := d.Set("disks", flattenedRecords); err != nil {
-		return diag.Errorf("unable to set `disks` attribute: %s", err)
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-016] crash via set attrs: %s", err)
 	}
 
 	return nil

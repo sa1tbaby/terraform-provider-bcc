@@ -22,7 +22,7 @@ func (args *Arguments) injectContextGetDisk() {
 	})
 }
 
-func (args *Arguments) injectCreateDisk() {
+func (args *Arguments) injectContextResourceDisk() {
 	args.merge(Arguments{
 		"name": {
 			Type:     schema.TypeString,
@@ -53,7 +53,7 @@ func (args *Arguments) injectCreateDisk() {
 	})
 }
 
-func (args *Arguments) injectResultDisk() {
+func (args *Arguments) injectContextDataDisk() {
 	args.merge(Arguments{
 		"id": {
 			Type:        schema.TypeString,
@@ -85,12 +85,13 @@ func (args *Arguments) injectResultDisk() {
 			Computed:    true,
 			Description: "disk identifier in the RUSTEC PV segment (for RUSTEC VDCs)",
 		},
+		"tags": newTagNamesDataSchema("tags of the disk"),
 	})
 }
 
-func (args *Arguments) injectResultListDisk() {
+func (args *Arguments) injectContextDataDiskList() {
 	s := Defaults()
-	s.injectResultDisk()
+	s.injectContextDataDisk()
 
 	args.merge(Arguments{
 		"disks": {

@@ -13,8 +13,8 @@ import (
 
 func resourceDisk() *schema.Resource {
 	args := Defaults()
-	args.injectCreateDisk()
-	args.injectContextVdcById()
+	args.injectContextResourceDisk()
+	args.injectContextRequiredVdc()
 
 	return &schema.Resource{
 		CreateContext: resourceDiskCreate,
@@ -35,44 +35,40 @@ func resourceDisk() *schema.Resource {
 func resourceDiskCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 
-	config := &struct {
+	config := struct {
 		name             string
 		size             int
 		storageProfileId string
-		vdcId            string
-		tags             interface{}
 	}{
 		name:             d.Get("name").(string),
 		size:             d.Get("size").(int),
-		vdcId:            d.Get("vdc_id").(string),
 		storageProfileId: d.Get("storage_profile_id").(string),
-		tags:             d.Get("tags"),
 	}
 
-	targetVdc, err := GetVdcById(d, manager)
+	vdc, err := GetVdcById(d, manager)
 	if err != nil {
-		return diag.Errorf("[ERROR-014]: %s", err)
+		return diag.Errorf("[ERROR-014] crash via get vdc: %s", err)
 	}
 
-	targetStorageProfile, err := GetStorageProfileById(config.storageProfileId, manager, targetVdc)
+	storageProfile, err := GetStorageProfileById(config.storageProfileId, manager, vdc)
 	if err != nil {
-		return diag.Errorf("[ERROR-014]: %s", err)
+		return diag.Errorf("[ERROR-014] crash via get storage profile: %s", err)
 	}
 
-	newDisk := bcc.NewDisk(config.name, config.size, targetStorageProfile)
-	newDisk.Tags = unmarshalTagNames(config.tags)
+	disk := bcc.NewDisk(config.name, config.size, storageProfile)
+	disk.Tags = unmarshalTagNames(d.Get("tags"))
 
-	if err = targetVdc.WaitLock(); err != nil {
-		return diag.Errorf("[ERROR-014]: %s", err)
+	if err = vdc.WaitLock(); err != nil {
+		return diag.Errorf("[ERROR-014] crash via vdc waitlock: %s", err)
 	}
-	if err = targetVdc.CreateDisk(&newDisk); err != nil {
-		return diag.Errorf("[ERROR-014]: %s", err)
+	if err = vdc.CreateDisk(&disk); err != nil {
+		return diag.Errorf("[ERROR-014] crash via disk create: %s", err)
 	}
-	if err = newDisk.WaitLock(); err != nil {
-		return diag.Errorf("[ERROR-014]: %s", err)
+	if err = disk.WaitLock(); err != nil {
+		return diag.Errorf("[ERROR-014] crash via disk waitlock: %s", err)
 	}
 
-	d.SetId(newDisk.ID)
+	d.SetId(disk.ID)
 	log.Printf("[INFO] Disk created, ID: %s", d.Id())
 
 	return resourceDiskRead(ctx, d, meta)
@@ -80,14 +76,10 @@ func resourceDiskCreate(ctx context.Context, d *schema.ResourceData, meta interf
 
 func resourceDiskRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
+
 	disk, err := manager.GetDisk(d.Id())
 	if err != nil {
-		if err.(*bcc.ApiError).Code() == 404 {
-			d.SetId("")
-			return nil
-		} else {
-			return diag.Errorf("[ERROR-014]: crash via getting disk: %s", err)
-		}
+		return resourceReadCheck(d, err, "[ERROR-014]:")
 	}
 
 	fields := map[string]interface{}{
@@ -100,7 +92,7 @@ func resourceDiskRead(ctx context.Context, d *schema.ResourceData, meta interfac
 	}
 
 	if err := setResourceDataFromMap(d, fields); err != nil {
-		return diag.Errorf("[ERROR-014]: crash via set data for 'Disk': %s", err)
+		return diag.Errorf("[ERROR-014]: crash via set attrs: %s", err)
 	}
 
 	return nil
@@ -111,7 +103,7 @@ func resourceDiskUpdate(ctx context.Context, d *schema.ResourceData, meta interf
 
 	disk, err := manager.GetDisk(d.Id())
 	if err != nil {
-		return diag.Errorf("[ERROR-014]: %s", err)
+		return diag.Errorf("[ERROR-014] crash via get disk: %s", err)
 	}
 
 	needUpdate := false
@@ -127,44 +119,44 @@ func resourceDiskUpdate(ctx context.Context, d *schema.ResourceData, meta interf
 		disk.Size = d.Get("size").(int)
 		if disk.Locked {
 			if err = disk.WaitLock(); err != nil {
-				return diag.Errorf("[ERROR-014]: %s", err)
+				return diag.Errorf("[ERROR-014] crash via waitlock: %s", err)
 			}
 		}
 		if err = disk.Resize(disk.Size); err != nil {
-			return diag.Errorf("[ERROR-014]: %s", err)
+			return diag.Errorf("[ERROR-014] crash via resize: %s", err)
 		}
 		needUpdate = false
 	}
 	if d.HasChange("storage_profile_id") {
-		targetVdc, err := GetVdcById(d, manager)
+		vdc, err := GetVdcById(d, manager)
 		if err != nil {
-			return diag.Errorf("[ERROR-014]:  %s", err)
+			return diag.Errorf("[ERROR-014] crash via getting vdc: %s", err)
 		}
 
-		targetStorageProfileId := d.Get("storage_profile_id").(string)
-		targetStorageProfile, err := GetStorageProfileById(targetStorageProfileId, manager, targetVdc)
+		storageProfileId := d.Get("storage_profile_id").(string)
+		storageProfile, err := GetStorageProfileById(storageProfileId, manager, vdc)
 		if err != nil {
-			return diag.Errorf("[ERROR-014]: %s", err)
+			return diag.Errorf("[ERROR-014] crash via get storage profile: %s", err)
 		}
 		if disk.Locked {
 			if err = disk.WaitLock(); err != nil {
-				return diag.Errorf("[ERROR-014]: %s", err)
+				return diag.Errorf("[ERROR-014] crash via waitlock: %s", err)
 			}
 		}
-		err = disk.UpdateStorageProfile(*targetStorageProfile)
+		err = disk.UpdateStorageProfile(*storageProfile)
 		if err != nil {
-			return diag.Errorf("[ERROR-014]: %s", err)
+			return diag.Errorf("[ERROR-014] crash via update storage profile: %s", err)
 		}
 		needUpdate = false
 	}
 	if needUpdate {
 		if disk.Locked {
 			if err = disk.WaitLock(); err != nil {
-				return diag.Errorf("[ERROR-014]: %s", err)
+				return diag.Errorf("[ERROR-014] crash via disk waitlock: %s", err)
 			}
 		}
 		if err = disk.Update(); err != nil {
-			return diag.Errorf("[ERROR-014]: %s", err)
+			return diag.Errorf("[ERROR-014] crash via disk update: %s", err)
 		}
 	}
 
@@ -175,22 +167,22 @@ func resourceDiskDelete(ctx context.Context, d *schema.ResourceData, meta interf
 	manager := meta.(*CombinedConfig).Manager()
 	disk, err := manager.GetDisk(d.Id())
 	if err != nil {
-		return diag.Errorf("[ERROR-014]: %s", err)
+		return diag.Errorf("[ERROR-014] crash via get disk: %s", err)
 	}
 
 	if disk.Vm != nil {
 		vm, err := manager.GetVm(disk.Vm.ID)
 		if err != nil {
-			return diag.Errorf("[ERROR-014]: %s", err)
+			return diag.Errorf("[ERROR-014] crash via get vm: %s", err)
 		}
 		err = vm.DetachDisk(disk)
 		if err != nil {
-			return diag.Errorf("[ERROR-014]: %s", err)
+			return diag.Errorf("[ERROR-014] crash via detach disk: %s", err)
 		}
 	}
 
 	if err = disk.Delete(); err != nil {
-		return diag.Errorf("[ERROR-014]: %s", err)
+		return diag.Errorf("[ERROR-014] crash via delete disk: %s", err)
 	}
 	disk.WaitLock()
 
@@ -202,7 +194,7 @@ func resourceDiskImport(ctx context.Context, d *schema.ResourceData, meta interf
 
 	disk, err := manager.GetDisk(d.Id())
 	if err != nil {
-		return nil, fmt.Errorf("[ERROR-014]: crash via getting disk: %s", err)
+		return nil, fmt.Errorf("[ERROR-014]: crash via get disk: %s", err)
 	}
 
 	d.SetId(disk.ID)

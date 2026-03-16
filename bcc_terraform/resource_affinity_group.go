@@ -3,6 +3,7 @@ package bcc_terraform
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/basis-cloud/bcc-go/bcc"
@@ -12,8 +13,8 @@ import (
 
 func resourceAffinityGroup() *schema.Resource {
 	args := Defaults()
-	args.injectCreateAffinityGroup()
-	args.injectContextVdcById()
+	args.injectContextResourceAffinityGroup()
+	args.injectContextRequiredVdc()
 
 	return &schema.Resource{
 		CreateContext: resourceAffinityGroupCreate,
@@ -37,39 +38,32 @@ func resourceAffinityGroup() *schema.Resource {
 func resourceAffinityGroupCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 
-	targetVdc, err := GetVdcById(d, manager)
+	vdc, err := GetVdcById(d, manager)
 	if err != nil {
 		return diag.Errorf("[ERROR-042]: crash via getting VDC: %s", err)
 	}
 
-	config := struct {
-		VdcId       string
+	fields := struct {
 		Name        string
 		Description string
 		Policy      string
-		Reboot      bool
-		vms         []interface{}
 	}{
-		VdcId:       d.Get("vdc_id").(string),
 		Name:        d.Get("name").(string),
 		Description: d.Get("description").(string),
 		Policy:      d.Get("policy").(string),
-		Reboot:      d.Get("reboot").(bool),
-		vms:         d.Get("vms").([]interface{}),
 	}
 
-	newAffGp := bcc.NewAffinityGroup(config.Name, config.Description, config.Policy, nil)
-	newAffGp.Reboot = config.Reboot
+	affGroup := bcc.NewAffinityGroup(fields.Name, fields.Description, fields.Policy, nil)
 
-	if err := targetVdc.CreateAffinityGroup(&newAffGp); err != nil {
+	if err := vdc.CreateAffinityGroup(&affGroup); err != nil {
 		return diag.Errorf("[ERROR-042]: crash via creating AffinityGroup: %s", err)
 	}
-
-	if err = newAffGp.WaitLock(); err != nil {
-		return diag.FromErr(err)
+	if err = affGroup.WaitLock(); err != nil {
+		return diag.Errorf("[ERROR-042]: %s", err)
 	}
 
-	d.SetId(newAffGp.ID)
+	d.SetId(affGroup.ID)
+	log.Printf("[INFO] AffGroup created, ID: %s", d.Id())
 
 	return resourceAffinityGroupRead(ctx, d, meta)
 }
@@ -79,12 +73,7 @@ func resourceAffinityGroupRead(ctx context.Context, d *schema.ResourceData, meta
 
 	affGroup, err := manager.GetAffinityGroup(d.Id())
 	if err != nil {
-		if err.(*bcc.ApiError).Code() == 404 {
-			d.SetId("")
-			return nil
-		} else {
-			return diag.Errorf("[ERROR-042]: crash via getting AffinityGroup: %s", err)
-		}
+		return resourceReadCheck(d, err, "[ERROR-042]:")
 	}
 
 	vms := make([]map[string]interface{}, len(affGroup.Vms))
@@ -97,12 +86,11 @@ func resourceAffinityGroupRead(ctx context.Context, d *schema.ResourceData, meta
 		"name":        affGroup.Name,
 		"description": affGroup.Description,
 		"policy":      affGroup.Policy,
-		"reboot":      affGroup.Reboot,
 		"vms":         vms,
 	}
 
 	if err := setResourceDataFromMap(d, fields); err != nil {
-		return diag.Errorf("[ERROR-042]: crash via setting resource data: %s", err)
+		return diag.Errorf("[ERROR-042]: crash via set attrs: %s", err)
 	}
 
 	return nil
@@ -125,11 +113,6 @@ func resourceAffinityGroupUpdate(ctx context.Context, d *schema.ResourceData, me
 	if d.HasChange("description") {
 		needUpdate = true
 		affGroup.Description = d.Get("description").(string)
-	}
-
-	if d.HasChange("reboot") {
-		needUpdate = true
-		affGroup.Reboot = d.Get("reboot").(bool)
 	}
 
 	if needUpdate {

@@ -7,17 +7,17 @@ import (
 
 func (args *Arguments) injectContextGetFirewallTemplate() {
 	args.merge(Arguments{
-		"name": {
-			Type:        schema.TypeString,
-			Optional:    true,
-			Computed:    true,
-			Description: "firewall template name",
-		},
 		"id": {
 			Type:        schema.TypeString,
 			Optional:    true,
 			Computed:    true,
 			Description: "firewall template identifier",
+		},
+		"name": {
+			Type:        schema.TypeString,
+			Optional:    true,
+			Computed:    true,
+			Description: "firewall template name",
 		},
 	})
 }
@@ -33,7 +33,7 @@ func (args *Arguments) injectContextFirewallTemplateById() {
 	})
 }
 
-func (args *Arguments) injectResultFirewallTemplate() {
+func (args *Arguments) injectContextDataFirewallTemplate() {
 
 	args.merge(Arguments{
 		"id": {
@@ -46,12 +46,23 @@ func (args *Arguments) injectResultFirewallTemplate() {
 			Computed:    true,
 			Description: "name of the Firewall Template",
 		},
+		"description": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "description of the Firewall Template",
+		},
+		"rules_count": {
+			Type:        schema.TypeInt,
+			Computed:    true,
+			Description: "number of rules in the Firewall Template",
+		},
+		"tags": newTagNamesDataSchema("tags of the firewall template"),
 	})
 }
 
-func (args *Arguments) injectResultListFirewallTemplate() {
+func (args *Arguments) injectContextDataFirewallTemplateList() {
 	firewallTemplate := Defaults()
-	firewallTemplate.injectResultFirewallTemplate()
+	firewallTemplate.injectContextDataFirewallTemplate()
 
 	args.merge(Arguments{
 		"firewall_templates": {
@@ -64,7 +75,7 @@ func (args *Arguments) injectResultListFirewallTemplate() {
 	})
 }
 
-func (args *Arguments) injectCreateFirewallTemplate() {
+func (args *Arguments) injectContextResourceFirewallTemplate() {
 	args.merge(Arguments{
 		"name": {
 			Type:     schema.TypeString,
@@ -74,6 +85,17 @@ func (args *Arguments) injectCreateFirewallTemplate() {
 				validation.StringLenBetween(1, 100),
 			),
 			Description: "name of the firewall template",
+		},
+		"description": {
+			Type:        schema.TypeString,
+			Optional:    true,
+			Computed:    true,
+			Description: "description of the firewall template",
+		},
+		"rules_count": {
+			Type:        schema.TypeInt,
+			Computed:    true,
+			Description: "number of rules in the firewall template",
 		},
 		"tags": newTagNamesResourceSchema("tags of the firewall template"),
 	})

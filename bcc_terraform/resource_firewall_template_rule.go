@@ -17,7 +17,7 @@ import (
 func resourceFirewallRule() *schema.Resource {
 	args := Defaults()
 	args.injectContextFirewallTemplateById()
-	args.injectCreateFirewallRule()
+	args.injectContextResourceFirewallRule()
 
 	return &schema.Resource{
 		CreateContext: resourceFirewallRuleCreate,
@@ -62,7 +62,7 @@ func resourceFirewallRuleCreate(ctx context.Context, d *schema.ResourceData, met
 	}
 
 	d.SetId(newFirewallRule.ID)
-	log.Printf("[INFO-048]: firewall Rule created, ID: %s", d.Id())
+	log.Printf("[INFO]: firewall Rule created, ID: %s", d.Id())
 
 	return resourceFirewallRuleRead(ctx, d, meta)
 }
@@ -73,7 +73,7 @@ func resourceFirewallRuleRead(ctx context.Context, d *schema.ResourceData, meta 
 	firewallId := d.Get("firewall_id").(string)
 	firewall, err := manager.GetFirewallTemplate(firewallId)
 	if err != nil {
-		return diag.Errorf("[ERROR-048}: crash via getting Firewall Template by id=%s: %s", firewallId, err)
+		return resourceReadCheck(d, err, "[ERROR-048]:")
 	}
 
 	firewallRuleId := d.Id()
@@ -164,8 +164,6 @@ func resourceFirewallRuleDelete(ctx context.Context, d *schema.ResourceData, met
 		return diag.Errorf("[ERROR-048]: crash via deleting Fierwall rule id=%s: %s", firewallId, err)
 	}
 
-	d.SetId("")
-	log.Printf("[INFO-048] Fierwall rule deleted, ID: %s", firewallRuleId)
 	return nil
 }
 

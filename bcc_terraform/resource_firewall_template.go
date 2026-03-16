@@ -13,8 +13,8 @@ import (
 
 func resourceFirewallTemplate() *schema.Resource {
 	args := Defaults()
-	args.injectContextVdcById()
-	args.injectCreateFirewallTemplate()
+	args.injectContextRequiredVdc()
+	args.injectContextResourceFirewallTemplate()
 
 	return &schema.Resource{
 		CreateContext: resourceFirewallTemplateCreate,
@@ -41,6 +41,7 @@ func resourceFirewallTemplateCreate(ctx context.Context, d *schema.ResourceData,
 
 	newFirewallTemplate := bcc.NewFirewallTemplate(d.Get("name").(string))
 	newFirewallTemplate.Tags = unmarshalTagNames(d.Get("tags"))
+	newFirewallTemplate.Description = d.Get("description").(string)
 
 	err = targetVdc.CreateFirewallTemplate(&newFirewallTemplate)
 	if err != nil {
@@ -48,7 +49,7 @@ func resourceFirewallTemplateCreate(ctx context.Context, d *schema.ResourceData,
 	}
 
 	d.SetId(newFirewallTemplate.ID)
-	log.Printf("[INFO-043]: firewallTemplate created, ID: %s", d.Id())
+	log.Printf("[INFO]: firewallTemplate created, ID: %s", d.Id())
 
 	return resourceFirewallTemplateRead(ctx, d, meta)
 }
@@ -57,18 +58,15 @@ func resourceFirewallTemplateRead(ctx context.Context, d *schema.ResourceData, m
 	manager := meta.(*CombinedConfig).Manager()
 	firewallTemplate, err := manager.GetFirewallTemplate(d.Id())
 	if err != nil {
-		if err.(*bcc.ApiError).Code() == 404 {
-			d.SetId("")
-			return nil
-		} else {
-			return diag.Errorf("[ERROR-043]: crash via getting Firewall Template by id=%s: %s", d.Id(), err)
-		}
+		return resourceReadCheck(d, err, "[ERROR-043]:")
 	}
 
 	fields := map[string]interface{}{
-		"name":   firewallTemplate.Name,
-		"tags":   marshalTagNames(firewallTemplate.Tags),
-		"vdc_id": firewallTemplate.Vdc.ID,
+		"name":        firewallTemplate.Name,
+		"tags":        marshalTagNames(firewallTemplate.Tags),
+		"description": firewallTemplate.Description,
+		"rules_count": firewallTemplate.RulesCount,
+		"vdc_id":      firewallTemplate.Vdc.ID,
 	}
 
 	if err = setResourceDataFromMap(d, fields); err != nil {
@@ -91,6 +89,9 @@ func resourceFirewallTemplateUpdate(ctx context.Context, d *schema.ResourceData,
 	}
 	if d.HasChange("tags") {
 		firewallTemplate.Tags = unmarshalTagNames(d.Get("tags"))
+	}
+	if d.HasChange("description") {
+		firewallTemplate.Description = d.Get("description").(string)
 	}
 	if err = firewallTemplate.UpdateFirewallTemplate(); err != nil {
 		return diag.Errorf("[ERROR-043]: crash via update: %s", err)

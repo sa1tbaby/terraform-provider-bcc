@@ -34,6 +34,18 @@ func newTagNamesResourceSchema(description string) *schema.Schema {
 	}
 }
 
+func newTagNamesDataSchema(description string) *schema.Schema {
+	return &schema.Schema{
+		Type:     schema.TypeSet,
+		Computed: true,
+		Elem: &schema.Schema{
+			Type:        schema.TypeString,
+			Description: "name of the Tag",
+		},
+		Description: description,
+	}
+}
+
 func marshalTags(tags []bcc.Tag) []map[string]interface{} {
 	convertedTags := make([]map[string]interface{}, len(tags))
 	for i, tag := range tags {

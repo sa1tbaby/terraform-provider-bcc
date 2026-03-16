@@ -10,8 +10,9 @@ import (
 
 func dataSourcePlatform() *schema.Resource {
 	args := Defaults()
-	args.injectContextVdcById()
-	args.injectContextGetPlatform() // override name
+	args.injectContextRequiredVdc()
+	args.injectResultPlatform()
+	args.injectContextGetPlatform()
 
 	return &schema.Resource{
 		ReadContext: dataSourcePlatformRead,
@@ -22,37 +23,39 @@ func dataSourcePlatform() *schema.Resource {
 func dataSourcePlatformRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 
-	targetVdc, err := GetVdcById(d, manager)
-	if err != nil {
-		return diag.Errorf("Error getting vdc: %s", err)
-	}
-
 	target, err := checkDatasourceNameOrId(d)
 	if err != nil {
-		return diag.Errorf("Error getting Platform: %s", err)
+		return diag.Errorf("[ERROR-039] crash via getting Platform: %s", err)
 	}
-	var targetPlatform *bcc.Platform
+
+	var platform *bcc.Platform
 	if target == "id" {
-		targetPlatform, err = manager.GetPlatform(d.Get("id").(string))
+		platformId := d.Get("id").(string)
+		platform, err = manager.GetPlatform(platformId)
 		if err != nil {
-			return diag.Errorf("Error getting Platform: %s", err)
+			return diag.Errorf("[ERROR-039] crash via getting Platform by id=%s: %s", platformId, err)
 		}
+
 	} else {
-		targetPlatform, err = GetPlatformByName(d, manager, targetVdc)
+		vdc, err := GetVdcById(d, manager)
 		if err != nil {
-			return diag.Errorf("Error getting Platform: %s", err)
+			return diag.Errorf("[ERROR-039] crash via getting vdc: %s", err)
+		}
+
+		platform, err = GetPlatformByName(d, manager, vdc)
+		if err != nil {
+			return diag.Errorf("[ERROR-039] crash via getting Platform by namee: %s", err)
 		}
 	}
 
-	flatten := map[string]interface{}{
-		"id":   targetPlatform.ID,
-		"name": targetPlatform.Name,
+	fields := map[string]interface{}{
+		"id":   platform.ID,
+		"name": platform.Name,
 	}
 
-	if err := setResourceDataFromMap(d, flatten); err != nil {
+	if err := setResourceDataFromMap(d, fields); err != nil {
 		return diag.FromErr(err)
 	}
 
-	d.SetId(targetPlatform.ID)
 	return nil
 }

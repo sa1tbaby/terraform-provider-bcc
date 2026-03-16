@@ -14,8 +14,8 @@ import (
 
 func resourceKubernetes() *schema.Resource {
 	args := Defaults()
-	args.injectCreateKubernetes()
-	args.injectContextVdcById()
+	args.injectContextResourceK8s()
+	args.injectContextRequiredVdc()
 	args.injectContextKubernetesTemplateById()
 
 	return &schema.Resource{
@@ -36,18 +36,17 @@ func resourceKubernetes() *schema.Resource {
 
 func resourceKubernetesCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	config := struct {
-		Name             string      `json:"name"`
-		NodeCpu          int         `json:"node_cpu"`
-		NodeRam          int         `json:"node_ram"`
-		NodesCount       int         `json:"nodes_count"`
-		NodeDiskSize     int         `json:"node_disk_size"`
-		TemplateId       string      `json:"template_id"`
-		Floating         bool        `json:"floating"`
-		PlatformId       string      `json:"platform_id"`
-		UserPublicKeyId  string      `json:"user_public_key_id"`
-		StorageProfileId string      `json:"node_storage_profile_id"`
-		Tags             interface{} `json:"tags"`
+	fields := struct {
+		Name             string `json:"name"`
+		NodeCpu          int    `json:"node_cpu"`
+		NodeRam          int    `json:"node_ram"`
+		NodesCount       int    `json:"nodes_count"`
+		NodeDiskSize     int    `json:"node_disk_size"`
+		TemplateId       string `json:"template_id"`
+		Floating         bool   `json:"floating"`
+		PlatformId       string `json:"platform_id"`
+		UserPublicKeyId  string `json:"user_public_key_id"`
+		StorageProfileId string `json:"node_storage_profile_id"`
 	}{
 		Name:             d.Get("name").(string),
 		NodeCpu:          d.Get("node_cpu").(int),
@@ -59,55 +58,54 @@ func resourceKubernetesCreate(ctx context.Context, d *schema.ResourceData, meta 
 		PlatformId:       d.Get("platform").(string),
 		UserPublicKeyId:  d.Get("user_public_key_id").(string),
 		StorageProfileId: d.Get("node_storage_profile_id").(string),
-		Tags:             d.Get("tags"),
 	}
 
-	targetVdc, err := GetVdcById(d, manager)
+	vdc, err := GetVdcById(d, manager)
 	if err != nil {
 		return diag.Errorf("[ERROR-053]: crash via getting VDC: %s", err)
 	}
 
-	if strings.EqualFold(targetVdc.Hypervisor.Type, "Vmware") && config.PlatformId == "" {
-		return diag.Errorf("[ERROR-053]: field 'platform' is required for %s Hypervisor", targetVdc.Hypervisor.Type)
+	if strings.EqualFold(vdc.Hypervisor.Type, "Vmware") && fields.PlatformId == "" {
+		return diag.Errorf("[ERROR-053]: field 'platform' is required for %s Hypervisor", vdc.Hypervisor.Type)
 	}
 
-	template, err := GetKubernetesTemplateById(d, manager, targetVdc)
+	template, err := GetKubernetesTemplateById(d, manager, vdc)
 	if err != nil {
 		return diag.Errorf("[ERROR-053]: crash via getting k8s template: %s", err)
 	}
 
-	storageProfile, err := targetVdc.GetStorageProfile(config.StorageProfileId)
+	storageProfile, err := vdc.GetStorageProfile(fields.StorageProfileId)
 	if err != nil {
-		return diag.Errorf("[ERROR-053]: storage profile %s not found", config.StorageProfileId)
+		return diag.Errorf("[ERROR-053]: storage profile %s not found", fields.StorageProfileId)
 	}
 
-	pubKey, err := manager.GetPublicKey(config.UserPublicKeyId)
+	pubKey, err := manager.GetPublicKey(fields.UserPublicKeyId)
 	if err != nil {
-		return diag.Errorf("[ERROR-053]: user public key %s not found", config.UserPublicKeyId)
+		return diag.Errorf("[ERROR-053]: user public key %s not found", fields.UserPublicKeyId)
 	}
 
-	log.Printf(config.Name, config.NodeCpu, config.NodeRam, template.Name)
+	log.Printf(fields.Name, fields.NodeCpu, fields.NodeRam, template.Name)
 
 	newKubernetes := bcc.NewKubernetes(
-		config.Name, config.NodeCpu, config.NodeRam, config.NodesCount, config.NodeDiskSize,
+		fields.Name, fields.NodeCpu, fields.NodeRam, fields.NodesCount, fields.NodeDiskSize,
 		nil, template, storageProfile, pubKey.ID, nil,
 	)
 
-	if config.PlatformId != "" {
-		newKubernetes.NodePlatform, err = manager.GetPlatform(config.PlatformId)
+	if fields.PlatformId != "" {
+		newKubernetes.NodePlatform, err = manager.GetPlatform(fields.PlatformId)
 		if err != nil {
-			return diag.Errorf("template_id: Error getting template: %s", err)
+			return diag.Errorf("[ERROR-053]: crash via getting template: %s", err)
 		}
 	}
 
-	if config.Floating {
+	if fields.Floating {
 		_floating := "RANDOM_FIP"
 		newKubernetes.Floating = &bcc.Port{IpAddress: &_floating}
 	}
 
 	newKubernetes.Tags = unmarshalTagNames(d.Get("tags"))
 
-	if err = targetVdc.CreateKubernetes(&newKubernetes); err != nil {
+	if err = vdc.CreateKubernetes(&newKubernetes); err != nil {
 		return diag.Errorf("[ERROR-053]: crash via creating Kubernetes: %s", err)
 	}
 
@@ -117,8 +115,7 @@ func resourceKubernetesCreate(ctx context.Context, d *schema.ResourceData, meta 
 
 	d.SetId(newKubernetes.ID)
 	d.Set("user_public_key_id", pubKey.PublicKey)
-
-	log.Printf("[INFO-053] Kubernetes created, ID: %s", d.Id())
+	log.Printf("[INFO] Kubernetes created, ID: %s", d.Id())
 
 	return resourceKubernetesRead(ctx, d, meta)
 }
@@ -127,12 +124,7 @@ func resourceKubernetesRead(ctx context.Context, d *schema.ResourceData, meta in
 	manager := meta.(*CombinedConfig).Manager()
 	k8s, err := manager.GetKubernetes(d.Id())
 	if err != nil {
-		if err.(*bcc.ApiError).Code() == 404 {
-			d.SetId("")
-			return nil
-		} else {
-			return diag.Errorf("[ERROR-053]: crash via getting k8s by id=%s: %s", d.Id(), err)
-		}
+		return resourceReadCheck(d, err, "[ERROR-053]:")
 	}
 
 	vms := make([]*string, len(k8s.Vms))
@@ -162,17 +154,18 @@ func resourceKubernetesRead(ctx context.Context, d *schema.ResourceData, meta in
 		"node_storage_profile_id": k8s.NodeStorageProfile.ID,
 		"tags":                    marshalTagNames(k8s.Tags),
 		"vms":                     vms,
-		"floating":                k8s.Floating != nil,
+		"floating":                false,
 		"floating_ip":             "",
 		"dashboard_url":           fmt.Sprint(manager.BaseURL, *dashboard.DashBoardUrl),
 	}
 
-	if err = setResourceDataFromMap(d, fields); err != nil {
-		return diag.FromErr(err)
+	if k8s.Floating != nil {
+		fields["floating"] = true
+		fields["floating_ip"] = k8s.Floating.IpAddress
 	}
 
-	if k8s.Floating != nil {
-		d.Set("floating_ip", k8s.Floating.IpAddress)
+	if err = setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-053]: crash via set attrs: %s", err)
 	}
 
 	return nil
@@ -180,7 +173,7 @@ func resourceKubernetesRead(ctx context.Context, d *schema.ResourceData, meta in
 
 func resourceKubernetesUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	targetVdc, err := GetVdcById(d, manager)
+	vdc, err := GetVdcById(d, manager)
 	if err != nil {
 		return diag.Errorf("[ERROR-053]: crash via getting VDC: %s", err)
 	}
@@ -202,22 +195,22 @@ func resourceKubernetesUpdate(ctx context.Context, d *schema.ResourceData, meta 
 		kubernetes.Tags = unmarshalTagNames(d.Get("tags"))
 	}
 
-	sp_id := d.Get("node_storage_profile_id").(string)
-	storage_profile, err := targetVdc.GetStorageProfile(sp_id)
+	spId := d.Get("node_storage_profile_id").(string)
+	storageProfile, err := vdc.GetStorageProfile(spId)
 	if err != nil {
-		return diag.Errorf("[ERROR-053]: err with getting 'storage_profile_id': %s ", sp_id)
+		return diag.Errorf("[ERROR-053]: err with getting 'storage_profile_id': %s ", spId)
 	}
 
 	userPublicKey := d.Get("user_public_key_id").(string)
-	pub_key, err := manager.GetPublicKey(userPublicKey)
+	pubKey, err := manager.GetPublicKey(userPublicKey)
 	if err != nil {
 		return diag.Errorf("[ERROR-053]: err with getting 'userPublicKey': %s ", userPublicKey)
 	}
 
 	kubernetes.NodeRam = d.Get("node_ram").(int)
 	kubernetes.NodeCpu = d.Get("node_cpu").(int)
-	kubernetes.UserPublicKey = pub_key.ID
-	kubernetes.NodeStorageProfile = storage_profile
+	kubernetes.UserPublicKey = pubKey.ID
+	kubernetes.NodeStorageProfile = storageProfile
 	kubernetes.NodeDiskSize = d.Get("node_disk_size").(int)
 	kubernetes.NodesCount = d.Get("nodes_count").(int)
 
@@ -233,7 +226,6 @@ func resourceKubernetesUpdate(ctx context.Context, d *schema.ResourceData, meta 
 		} else {
 			kubernetes.Floating = &bcc.Port{ID: "RANDOM_FIP"}
 		}
-		d.Set("floating", kubernetes.Floating != nil)
 	}
 
 	if needUpdate {

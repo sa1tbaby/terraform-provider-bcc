@@ -3,6 +3,7 @@ package bcc_terraform
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/basis-cloud/bcc-go/bcc"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -11,9 +12,9 @@ import (
 
 func dataSourceKubernetes() *schema.Resource {
 	args := Defaults()
-	args.injectResultKubernetes()
-	args.injectContextVdcById()
-	args.injectContextGetKubernetes() // override "name"
+	args.injectContextDataK8s()
+	args.injectContextRequiredVdc()
+	args.injectContextGetK8s()
 
 	return &schema.Resource{
 		ReadContext: dataSourceKubernetesRead,
@@ -23,64 +24,65 @@ func dataSourceKubernetes() *schema.Resource {
 
 func dataSourceKubernetesRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	targetVdc, err := GetVdcById(d, manager)
-	if err != nil {
-		return diag.Errorf("Error getting vdc: %s", err)
-	}
 
 	target, err := checkDatasourceNameOrId(d)
 	if err != nil {
-		return diag.Errorf("Error getting Kubernetes: %s", err)
+		return diag.Errorf("[ERROR-034] crash via getting Kubernetes: %s", err)
 	}
-	var targetKubernetes *bcc.Kubernetes
-	if target == "id" {
-		targetKubernetes, err = manager.GetKubernetes(d.Get("id").(string))
+
+	var k8s *bcc.Kubernetes
+	if strings.EqualFold(target, "id") {
+		k8sId := d.Get("id").(string)
+		k8s, err = manager.GetKubernetes(k8sId)
 		if err != nil {
-			return diag.Errorf("Error getting Kubernetes: %s", err)
+			return diag.Errorf("[ERROR-034] crash via getting Kubernetes by id=%s: %s", k8sId, err)
 		}
 	} else {
-		targetKubernetes, err = GetKubernetesByName(d, manager, targetVdc)
+		vdc, err := GetVdcById(d, manager)
 		if err != nil {
-			return diag.Errorf("Error getting Kubernetes: %s", err)
+			return diag.Errorf("[ERROR-034] crash via getting vdc: %s", err)
+		}
+
+		k8s, err = GetKubernetesByName(d, manager, vdc)
+		if err != nil {
+			return diag.Errorf("[ERROR-034] crash via getting Kubernetes by name: %s", err)
 		}
 	}
 
-	vms := make([]*string, len(targetKubernetes.Vms))
-	for i, vm := range targetKubernetes.Vms {
+	vms := make([]*string, len(k8s.Vms))
+	for i, vm := range k8s.Vms {
 		vms[i] = &vm.ID
 	}
 
-	dashboard, err := targetKubernetes.GetKubernetesDashBoardUrl()
+	dashboard, err := k8s.GetKubernetesDashBoardUrl()
 	if err != nil {
-		return diag.Errorf("id: Error getting Kubernetes dashboard url: %s", err)
+		return diag.Errorf("[ERROR-034] crash via getting Kubernetes dashboard url: %s", err)
 	}
-	dashboard_url := fmt.Sprint(manager.BaseURL, *dashboard.DashBoardUrl)
 
-	flatten := map[string]interface{}{
-		"id":                      targetKubernetes.ID,
-		"name":                    targetKubernetes.Name,
-		"node_cpu":                targetKubernetes.NodeCpu,
-		"node_ram":                targetKubernetes.NodeRam,
-		"template_id":             targetKubernetes.Template.ID,
-		"node_disk_size":          targetKubernetes.NodeDiskSize,
-		"nodes_count":             targetKubernetes.NodesCount,
-		"user_public_key_id":      targetKubernetes.UserPublicKey,
-		"node_storage_profile_id": targetKubernetes.NodeStorageProfile.ID,
-		"floating":                nil,
-		"floating_ip":             nil,
+	fields := map[string]interface{}{
+		"id":                      k8s.ID,
+		"name":                    k8s.Name,
+		"node_cpu":                k8s.NodeCpu,
+		"node_ram":                k8s.NodeRam,
+		"template_id":             k8s.Template.ID,
+		"node_disk_size":          k8s.NodeDiskSize,
+		"nodes_count":             k8s.NodesCount,
+		"user_public_key_id":      k8s.UserPublicKey,
+		"node_storage_profile_id": k8s.NodeStorageProfile.ID,
+		"floating":                false,
+		"floating_ip":             "",
 		"vms":                     vms,
-		"dashboard_url":           dashboard_url,
+		"dashboard_url":           fmt.Sprint(manager.BaseURL, *dashboard.DashBoardUrl),
+		"tags":                    marshalTagNames(k8s.Tags),
 	}
 
-	if targetKubernetes.Floating != nil {
-		flatten["floating"] = true
-		flatten["floating_ip"] = targetKubernetes.Floating.IpAddress
+	if k8s.Floating != nil {
+		fields["floating"] = true
+		fields["floating_ip"] = k8s.Floating.IpAddress
 	}
 
-	if err := setResourceDataFromMap(d, flatten); err != nil {
-		return diag.FromErr(err)
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-034] crash via set attrs: %s", err)
 	}
-
-	d.SetId(targetKubernetes.ID)
 	return nil
 }

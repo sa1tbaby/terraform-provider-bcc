@@ -12,8 +12,8 @@ import (
 
 func resourceNetwork() *schema.Resource {
 	args := Defaults()
-	args.injectContextVdcById()
-	args.injectCreateNetwork()
+	args.injectContextRequiredVdc()
+	args.injectContextResourceNetwork()
 
 	return &schema.Resource{
 		CreateContext: resourceNetworkCreate,
@@ -40,7 +40,7 @@ func resourceNetwork() *schema.Resource {
 
 func resourceNetworkCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	targetVdc, err := GetVdcById(d, manager)
+	vdc, err := GetVdcById(d, manager)
 	if err != nil {
 		return diag.Errorf("[ERROR-009]: %s", err)
 	}
@@ -55,21 +55,24 @@ func resourceNetworkCreate(ctx context.Context, d *schema.ResourceData, meta int
 		network.Mtu = nil
 	}
 
-	if err = targetVdc.WaitLock(); err != nil {
+	if err = vdc.WaitLock(); err != nil {
 		return diag.Errorf("[ERROR-009]: crash via wait lock %s", err)
 	}
-	if err = targetVdc.CreateNetwork(&network); err != nil {
+	if err = vdc.CreateNetwork(&network); err != nil {
 		return diag.Errorf("[ERROR-009]: crash via creating %s", err)
 	}
-	d.SetId(network.ID)
+	if err = vdc.WaitLock(); err != nil {
+		return diag.Errorf("[ERROR-009]: crash via wait lock %s", err)
+	}
 
-	if err = createSubnet(d, manager); err != nil {
+	if err = createSubnet(d, manager, &network); err != nil {
 		return diag.Errorf("[ERROR-009]: crash via creating gsub nets%s", err)
 	}
 	if err = network.WaitLock(); err != nil {
 		return diag.Errorf("[ERROR-009]: crash via waitlock %s", err)
 	}
 
+	d.SetId(network.ID)
 	log.Printf("[INFO] Network created, ID: %s", d.Id())
 
 	return resourceNetworkRead(ctx, d, meta)
@@ -79,12 +82,7 @@ func resourceNetworkRead(ctx context.Context, d *schema.ResourceData, meta inter
 	manager := meta.(*CombinedConfig).Manager()
 	network, err := manager.GetNetwork(d.Id())
 	if err != nil {
-		if err.(*bcc.ApiError).Code() == 404 {
-			d.SetId("")
-			return nil
-		} else {
-			return diag.Errorf("[ERROR-009]: crash via getting network-%s: %s", d.Id(), err)
-		}
+		return resourceReadCheck(d, err, "[ERROR-009]:")
 	}
 
 	subnets, err := network.GetSubnets()
@@ -92,13 +90,13 @@ func resourceNetworkRead(ctx context.Context, d *schema.ResourceData, meta inter
 		return diag.Errorf("[ERROR-009]: %s", err)
 	}
 
-	flattenedRecords := make([]map[string]interface{}, len(subnets))
+	subnetsMap := make([]map[string]interface{}, len(subnets))
 	for i, subnet := range subnets {
 		dnsStrings := make([]string, len(subnet.DnsServers))
 		for i2, dns := range subnet.DnsServers {
 			dnsStrings[i2] = dns.DNSServer
 		}
-		flattenedRecords[i] = map[string]interface{}{
+		subnetsMap[i] = map[string]interface{}{
 			"id":       subnet.ID,
 			"cidr":     subnet.CIDR,
 			"dhcp":     subnet.IsDHCP,
@@ -110,11 +108,12 @@ func resourceNetworkRead(ctx context.Context, d *schema.ResourceData, meta inter
 	}
 
 	fields := map[string]interface{}{
-		"name":    network.Name,
-		"tags":    marshalTagNames(network.Tags),
-		"mtu":     network.Mtu,
-		"subnets": flattenedRecords,
-		"vdc_id":  network.Vdc.Id,
+		"name":     network.Name,
+		"tags":     marshalTagNames(network.Tags),
+		"mtu":      network.Mtu,
+		"subnets":  subnetsMap,
+		"vdc_id":   network.Vdc.Id,
+		"external": network.External,
 	}
 
 	if err = setResourceDataFromMap(d, fields); err != nil {
@@ -183,16 +182,13 @@ func resourceNetworkDelete(ctx context.Context, d *schema.ResourceData, meta int
 		return diag.Errorf("[ERROR-009]: crash via deleting network-%s: %s", d.Id(), err)
 	}
 	network.WaitLock()
+
 	return nil
 }
 
-func createSubnet(d *schema.ResourceData, manager *bcc.Manager) (err error) {
+func createSubnet(d *schema.ResourceData, manager *bcc.Manager, network *bcc.Network) (err error) {
 	subnets := d.Get("subnets").([]interface{})
 	log.Printf("[DEBUG] subnets: %#v", subnets)
-	network, err := manager.GetNetwork(d.Id())
-	if err != nil {
-		return fmt.Errorf("[ERROR-009]: %s", err)
-	}
 
 	for _, subnetInfo := range subnets {
 		log.Printf("[DEBUG] subnetInfo: %#v", subnetInfo)
@@ -314,12 +310,7 @@ func resourceNetworkImport(ctx context.Context, d *schema.ResourceData, meta int
 	manager := meta.(*CombinedConfig).Manager()
 	network, err := manager.GetNetwork(d.Id())
 	if err != nil {
-		if err.(*bcc.ApiError).Code() == 404 {
-			d.SetId("")
-			return nil, fmt.Errorf("[ERROR-009]: network %s not found: %s", d.Id(), err)
-		} else {
-			return nil, fmt.Errorf("[ERROR-009]: crash via getting network-%s: %s", d.Id(), err)
-		}
+		return nil, fmt.Errorf("[ERROR-009]: crash via getting network-%s: %s", d.Id(), err)
 	}
 
 	d.SetId(network.ID)

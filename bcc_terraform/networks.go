@@ -22,7 +22,7 @@ func (args *Arguments) injectContextGetNetwork() {
 	})
 }
 
-func (args *Arguments) injectCreateNetwork() {
+func (args *Arguments) injectContextResourceNetwork() {
 
 	args.merge(Arguments{
 		"name": {
@@ -104,11 +104,16 @@ func (args *Arguments) injectCreateNetwork() {
 			Optional: true,
 			Computed: true,
 		},
+		"external": {
+			Type:        schema.TypeBool,
+			Computed:    true,
+			Description: "whether the network is external",
+		},
 		"tags": newTagNamesResourceSchema("tags of the Network"),
 	})
 }
 
-func (args *Arguments) injectResultNetwork() {
+func (args *Arguments) injectContextDataNetwork() {
 	args.merge(Arguments{
 		"id": {
 			Type:        schema.TypeString,
@@ -125,6 +130,12 @@ func (args *Arguments) injectResultNetwork() {
 			Computed:    true,
 			Description: "maximum transmission unit (MTU) of packets in the network;",
 		},
+		"external": {
+			Type:        schema.TypeBool,
+			Computed:    true,
+			Description: "whether the network is external",
+		},
+		"tags": newTagNamesDataSchema("tags of the Network"),
 		"subnets": {
 			Type:        schema.TypeList,
 			Computed:    true,
@@ -173,9 +184,9 @@ func (args *Arguments) injectResultNetwork() {
 	})
 }
 
-func (args *Arguments) injectResultListNetwork() {
+func (args *Arguments) injectContextDataNetworkList() {
 	s := Defaults()
-	s.injectResultNetwork()
+	s.injectContextDataNetwork()
 
 	args.merge(Arguments{
 		"networks": {

@@ -2,9 +2,7 @@ package bcc_terraform
 
 import (
 	"context"
-	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	"github.com/basis-cloud/bcc-go/bcc"
@@ -19,8 +17,8 @@ func resourceVm() *schema.Resource {
 
 	return &schema.Resource{
 		CreateContext: resourceVmCreate,
-		ReadContext:   resourceVmRead,
 		UpdateContext: resourceVmUpdate,
+		ReadContext:   resourceVmRead,
 		DeleteContext: resourceVmDelete,
 		Importer: &schema.ResourceImporter{
 			StateContext: resourceVmImport,
@@ -168,97 +166,6 @@ func resourceVmCreate(ctx context.Context, d *schema.ResourceData, meta interfac
 	return resourceVmRead(ctx, d, meta)
 }
 
-func resourceVmImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
-	manager := meta.(*CombinedConfig).Manager()
-
-	vm, err := manager.GetVm(d.Id())
-	if err != nil {
-		return nil, err
-	}
-
-	d.SetId(vm.ID)
-
-	return []*schema.ResourceData{d}, nil
-}
-
-func resourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	manager := meta.(*CombinedConfig).Manager()
-	vm, err := manager.GetVm(d.Id())
-	if err != nil {
-		if err.(*bcc.ApiError).Code() == 404 {
-			d.SetId("")
-			return nil
-		} else {
-			return diag.Errorf("[ERROR-021]: crash via getting vm-%s: %s", d.Id(), err)
-		}
-	}
-
-	flattenDisks := make([]string, len(vm.Disks)-1)
-	for i, disk := range vm.Disks {
-		if i == 0 {
-			systemDisk := make([]interface{}, 1)
-			systemDisk[0] = map[string]interface{}{
-				"id":                 disk.ID,
-				"name":               "Основной диск",
-				"size":               disk.Size,
-				"storage_profile_id": disk.StorageProfile.ID,
-				"external_id":        disk.ExternalID,
-			}
-
-			if err = d.Set("system_disk", systemDisk); err != nil {
-				return diag.Errorf("error with setting system_disk %w", err)
-			}
-			continue
-		}
-		flattenDisks[i-1] = disk.ID
-	}
-
-	flattenPorts := make([]string, len(vm.Ports))
-	flattenNetworks := make([]interface{}, len(vm.Ports))
-	for i, port := range vm.Ports {
-		flattenPorts[i] = port.ID
-		flattenNetworks[i] = map[string]interface{}{
-			"id":         port.ID,
-			"ip_address": port.IpAddress,
-		}
-	}
-
-	affGr := make([]string, len(vm.AffinityGroups))
-	for i, aff := range vm.AffinityGroups {
-		affGr[i] = aff.ID
-	}
-
-	fields := map[string]interface{}{
-		"vdc_id":          vm.Vdc.ID,
-		"name":            vm.Name,
-		"description":     vm.Description,
-		"cpu":             vm.Cpu,
-		"ram":             vm.Ram,
-		"template_id":     vm.Template.ID,
-		"power":           vm.Power,
-		"hot_add":         vm.HotAdd,
-		"platform":        vm.Platform.ID,
-		"tags":            marshalTagNames(vm.Tags),
-		"affinity_groups": affGr,
-		"disks":           flattenDisks,
-		"ports":           flattenPorts,
-		"networks":        flattenNetworks,
-		"floating":        false,
-		"floating_ip":     "",
-	}
-
-	if vm.Floating != nil {
-		fields["floating"] = true
-		fields["floating_ip"] = vm.Floating.IpAddress
-	}
-
-	if err = setResourceDataFromMap(d, fields); err != nil {
-		return diag.FromErr(err)
-	}
-
-	return nil
-}
-
 func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 	targetVdc, err := GetVdcById(d, manager)
@@ -361,7 +268,85 @@ func resourceVmUpdate(ctx context.Context, d *schema.ResourceData, meta interfac
 	return resourceVmRead(ctx, d, meta)
 }
 
-func resourceVmDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceVmRead(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	manager := meta.(*CombinedConfig).Manager()
+	vm, err := manager.GetVm(d.Id())
+	if err != nil {
+		if err.(*bcc.ApiError).Code() == 404 {
+			d.SetId("")
+			return nil
+		} else {
+			return diag.Errorf("[ERROR-021]: crash via getting vm-%s: %s", d.Id(), err)
+		}
+	}
+
+	flattenDisks := make([]string, len(vm.Disks)-1)
+	for i, disk := range vm.Disks {
+		if i == 0 {
+			systemDisk := make([]interface{}, 1)
+			systemDisk[0] = map[string]interface{}{
+				"id":                 disk.ID,
+				"name":               "Основной диск",
+				"size":               disk.Size,
+				"storage_profile_id": disk.StorageProfile.ID,
+				"external_id":        disk.ExternalID,
+			}
+
+			if err = d.Set("system_disk", systemDisk); err != nil {
+				return diag.Errorf("error with setting system_disk %s", err)
+			}
+			continue
+		}
+		flattenDisks[i-1] = disk.ID
+	}
+
+	flattenPorts := make([]string, len(vm.Ports))
+	flattenNetworks := make([]interface{}, len(vm.Ports))
+	for i, port := range vm.Ports {
+		flattenPorts[i] = port.ID
+		flattenNetworks[i] = map[string]interface{}{
+			"id":         port.ID,
+			"ip_address": port.IpAddress,
+		}
+	}
+
+	affGr := make([]string, len(vm.AffinityGroups))
+	for i, aff := range vm.AffinityGroups {
+		affGr[i] = aff.ID
+	}
+
+	fields := map[string]interface{}{
+		"vdc_id":          vm.Vdc.ID,
+		"name":            vm.Name,
+		"description":     vm.Description,
+		"cpu":             vm.Cpu,
+		"ram":             vm.Ram,
+		"template_id":     vm.Template.ID,
+		"power":           vm.Power,
+		"hot_add":         vm.HotAdd,
+		"platform":        vm.Platform.ID,
+		"tags":            marshalTagNames(vm.Tags),
+		"affinity_groups": affGr,
+		"disks":           flattenDisks,
+		"ports":           flattenPorts,
+		"networks":        flattenNetworks,
+		"floating":        false,
+		"floating_ip":     "",
+	}
+
+	if vm.Floating != nil {
+		fields["floating"] = true
+		fields["floating_ip"] = vm.Floating.IpAddress
+	}
+
+	if err = setResourceDataFromMap(d, fields); err != nil {
+		return diag.FromErr(err)
+	}
+
+	return nil
+}
+
+func resourceVmDelete(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 
 	vm, err := manager.GetVm(d.Id())
@@ -411,264 +396,15 @@ func resourceVmDelete(ctx context.Context, d *schema.ResourceData, meta interfac
 	return nil
 }
 
-func syncVmNetworks(d *schema.ResourceData, manager *bcc.Manager, vm *bcc.Vm) (err diag.Diagnostics) {
-	var targetDefinition string
+func resourceVmImport(_ context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	manager := meta.(*CombinedConfig).Manager()
 
-	if d.HasChange("networks") {
-		targetDefinition = "networks"
-	} else if d.HasChange("ports") {
-		targetDefinition = "ports"
-	} else {
-		if _, ok := d.GetOk("networks"); ok {
-			targetDefinition = "networks"
-		} else if _, ok := d.GetOk("ports"); ok {
-			targetDefinition = "ports"
-		} else {
-			return nil
-		}
-	}
-
-	oldNetworksRaw, newNetworksRaw := d.GetChange(targetDefinition)
-	olfFloating, newFloating := d.GetChange("floating")
-
-	newNetworksSet := make(map[string]bool)
-	oldNetworks := make([]string, len(oldNetworksRaw.([]interface{})))
-	newNetworks := make([]string, len(newNetworksRaw.([]interface{})))
-
-	if strings.EqualFold(targetDefinition, "ports") {
-		for idx, item := range newNetworksRaw.([]interface{}) {
-			newNetworks[idx] = item.(string)
-		}
-		for idx, item := range oldNetworksRaw.([]interface{}) {
-			oldNetworks[idx] = item.(string)
-		}
-	} else if strings.EqualFold(targetDefinition, "networks") {
-		for idx, item := range newNetworksRaw.([]interface{}) {
-			_item := item.(map[string]interface{})
-			newNetworks[idx] = _item["id"].(string)
-		}
-		for idx, item := range oldNetworksRaw.([]interface{}) {
-			_item := item.(map[string]interface{})
-			oldNetworks[idx] = _item["id"].(string)
-		}
-	}
-
-	for _, item := range newNetworks {
-		newNetworksSet[item] = true
-	}
-	if len(newNetworksSet) == 0 && newFloating.(bool) {
-		return diag.Errorf("floating cannot be added without existing networks")
-	}
-
-	if olfFloating.(bool) && !newFloating.(bool) {
-		vm.Floating = &bcc.Port{IpAddress: nil}
-		if err := repeatOnError(vm.Update, vm); err != nil {
-			return diag.Errorf("Error with deletting floating for vm: %s", err)
-		}
-	}
-
-	for _, item := range oldNetworks {
-		if newNetworksSet[item] {
-			delete(newNetworksSet, item)
-		} else {
-			if err = disconnectVmOldPort(item, manager, vm); err != nil {
-				log.Printf("Error disconnecting new port: %v", err)
-				return err
-			}
-		}
-	}
-
-	for item := range newNetworksSet {
-		if err = connectVmNewPort(item, manager, vm); err != nil {
-			log.Printf("Error connecting new port: %v", err)
-			return err
-		}
-	}
-
-	if newFloating.(bool) {
-		vm.Floating = &bcc.Port{ID: "RANDOM_FIP"}
-		if err := repeatOnError(vm.Update, vm); err != nil {
-			return diag.Errorf("Error with adding floating for vm: %s", err)
-		}
-	}
-
-	return nil
-}
-
-func collectVmNetworks(d *schema.ResourceData) []string {
-	portsIds := parseVmPorts(d.Get("ports"))
-	networksIds := parseVmNetworks(d.Get("networks"))
-
-	if len(networksIds) == 0 && len(portsIds) != 0 {
-		return portsIds
-	} else {
-		return networksIds
-	}
-}
-
-func parseVmPorts(d interface{}) (portsIds []string) {
-	ports := d.([]interface{})
-	portsIds = make([]string, 0, len(ports))
-	for _, portIdValue := range ports {
-		portsIds = append(portsIds, portIdValue.(string))
-	}
-
-	return
-}
-
-func parseVmNetworks(d interface{}) (networksIds []string) {
-	networks := d.([]interface{})
-	networksIds = make([]string, 0, len(networks))
-	for _, network := range networks {
-		portMap := network.(map[string]interface{})
-		networksIds = append(networksIds, portMap["id"].(string))
-	}
-	return
-}
-
-func connectVmNewPort(portId string, manager *bcc.Manager, vm *bcc.Vm) diag.Diagnostics {
-	port, err := manager.GetPort(portId)
+	vm, err := manager.GetVm(d.Id())
 	if err != nil {
-		return diag.FromErr(err)
+		return nil, err
 	}
 
-	if port.Connected != nil && port.Connected.ID != vm.ID {
-		if err = vm.DisconnectPort(port); err != nil {
-			return diag.FromErr(err)
-		}
-		if err = vm.WaitLock(); err != nil {
-			return diag.FromErr(err)
-		}
-	}
+	d.SetId(vm.ID)
 
-	log.Printf("Port `%s` will be Attached", port.ID)
-
-	if err = vm.ConnectPort(port, true); err != nil {
-		return diag.Errorf("Ports: Error Cannot attach port `%s`: %s", port.ID, err)
-	}
-
-	return nil
-}
-
-func disconnectVmOldPort(portId string, manager *bcc.Manager, vm *bcc.Vm) diag.Diagnostics {
-	port, err := manager.GetPort(portId)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	if port.Connected != nil && port.Connected.ID == vm.ID {
-		log.Printf("Port %s found on vm and not mentioned in the state."+
-			" Port will be detached", port.ID)
-
-		if err := vm.DisconnectPort(port); err != nil {
-			return diag.FromErr(err)
-		}
-		if err = vm.WaitLock(); err != nil {
-			return diag.FromErr(err)
-		}
-	}
-
-	return nil
-}
-
-func syncVmDisks(d *schema.ResourceData, manager *bcc.Manager, vdc *bcc.Vdc, vm *bcc.Vm) (err error) {
-	oldDisks, newDisks := d.GetChange("disks")
-	newDisksMap := make(map[string]bool)
-	oldDisksMap := make(map[string]bool)
-
-	for _, item := range newDisks.(*schema.Set).List() {
-		newDisksMap[item.(string)] = true
-	}
-	for _, item := range oldDisks.(*schema.Set).List() {
-		_item := item.(string)
-
-		if newDisksMap[_item] {
-			delete(newDisksMap, _item)
-		} else {
-			oldDisksMap[_item] = true
-		}
-	}
-
-	if err = detachVmDisks(oldDisksMap, manager, vm); err != nil {
-		return fmt.Errorf("crash via detaching vm disks: %s", err)
-	}
-
-	if err = attachVmDisks(newDisksMap, manager, vm); err != nil {
-		return fmt.Errorf("crash via attaching vm disks: %s", err)
-	}
-
-	// System disk resize
-	if d.HasChange("system_disk") {
-		systemDiskArgs := d.Get("system_disk.0").(map[string]interface{})
-		systemDiskId := systemDiskArgs["id"].(string)
-		diskSize := systemDiskArgs["size"].(int)
-		systemDisk, err := manager.GetDisk(systemDiskId)
-		if err != nil {
-			return err
-		}
-
-		if err = systemDisk.Resize(diskSize); err != nil {
-			return fmt.Errorf("crash via resizing disk: %s", err)
-		}
-
-		if !d.HasChange("system_disk.0.storage_profile_id") {
-			return err
-		}
-
-		storageProfileId := d.Get("system_disk.0.storage_profile_id").(string)
-		storageProfile, err := vdc.GetStorageProfile(storageProfileId)
-		if err != nil {
-			return err
-		}
-
-		err = systemDisk.UpdateStorageProfile(*storageProfile)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func attachVmDisks(disks map[string]bool, manager *bcc.Manager, vm *bcc.Vm) (err error) {
-	for diskId, ok := range disks {
-		if !ok {
-			continue
-		}
-		disk, err := manager.GetDisk(diskId)
-		if err != nil {
-			return fmt.Errorf("disk with id %s not found: %s", diskId, err)
-		}
-
-		if disk.Vm != nil && disk.Vm.ID != vm.ID {
-			return fmt.Errorf("disk %s is already attached to another vm. please detach it before conecting", disk.ID)
-		} else if disk.Vm == nil {
-			if err = vm.AttachDisk(disk); err != nil {
-				return fmt.Errorf("crash via attaching disk with id='%s': %s", disk.ID, err)
-			}
-		}
-	}
-
-	return
-}
-
-func detachVmDisks(disks map[string]bool, manager *bcc.Manager, vm *bcc.Vm) (err error) {
-	for diskId, ok := range disks {
-		if !ok {
-			continue
-		}
-		disk, err := manager.GetDisk(diskId)
-		if err != nil {
-			return fmt.Errorf("disk with id %s not found: %s", diskId, err)
-		}
-
-		if disk.Vm != nil && disk.Vm.ID == vm.ID {
-			log.Printf("Disk %s found on vm and not mentioned in the state. Disk will be detached", disk.ID)
-			if err = vm.DetachDisk(disk); err != nil {
-				return fmt.Errorf("crash via detaching disk with id='%s': %s", disk.ID, err)
-			}
-		}
-	}
-
-	return
+	return []*schema.ResourceData{d}, nil
 }

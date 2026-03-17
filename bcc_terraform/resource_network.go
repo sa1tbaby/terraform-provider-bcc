@@ -17,8 +17,8 @@ func resourceNetwork() *schema.Resource {
 
 	return &schema.Resource{
 		CreateContext: resourceNetworkCreate,
-		ReadContext:   resourceNetworkRead,
 		UpdateContext: resourceNetworkUpdate,
+		ReadContext:   resourceNetworkRead,
 		DeleteContext: resourceNetworkDelete,
 		Importer: &schema.ResourceImporter{
 			StateContext: resourceNetworkImport,
@@ -78,51 +78,6 @@ func resourceNetworkCreate(ctx context.Context, d *schema.ResourceData, meta int
 	return resourceNetworkRead(ctx, d, meta)
 }
 
-func resourceNetworkRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	manager := meta.(*CombinedConfig).Manager()
-	network, err := manager.GetNetwork(d.Id())
-	if err != nil {
-		return resourceReadCheck(d, err, "[ERROR-009]:")
-	}
-
-	subnets, err := network.GetSubnets()
-	if err != nil {
-		return diag.Errorf("[ERROR-009]: %s", err)
-	}
-
-	subnetsMap := make([]map[string]interface{}, len(subnets))
-	for i, subnet := range subnets {
-		dnsStrings := make([]string, len(subnet.DnsServers))
-		for i2, dns := range subnet.DnsServers {
-			dnsStrings[i2] = dns.DNSServer
-		}
-		subnetsMap[i] = map[string]interface{}{
-			"id":       subnet.ID,
-			"cidr":     subnet.CIDR,
-			"dhcp":     subnet.IsDHCP,
-			"gateway":  subnet.Gateway,
-			"start_ip": subnet.StartIp,
-			"end_ip":   subnet.EndIp,
-			"dns":      dnsStrings,
-		}
-	}
-
-	fields := map[string]interface{}{
-		"name":     network.Name,
-		"tags":     marshalTagNames(network.Tags),
-		"mtu":      network.Mtu,
-		"subnets":  subnetsMap,
-		"vdc_id":   network.Vdc.Id,
-		"external": network.External,
-	}
-
-	if err = setResourceDataFromMap(d, fields); err != nil {
-		return diag.Errorf("[ERROR-009]: %s", err)
-	}
-
-	return nil
-}
-
 func resourceNetworkUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 
 	manager := meta.(*CombinedConfig).Manager()
@@ -171,7 +126,52 @@ func resourceNetworkUpdate(ctx context.Context, d *schema.ResourceData, meta int
 	return resourceNetworkRead(ctx, d, meta)
 }
 
-func resourceNetworkDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceNetworkRead(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	manager := meta.(*CombinedConfig).Manager()
+	network, err := manager.GetNetwork(d.Id())
+	if err != nil {
+		return resourceReadCheck(d, err, "[ERROR-009]:")
+	}
+
+	subnets, err := network.GetSubnets()
+	if err != nil {
+		return diag.Errorf("[ERROR-009]: %s", err)
+	}
+
+	subnetsMap := make([]map[string]interface{}, len(subnets))
+	for i, subnet := range subnets {
+		dnsStrings := make([]string, len(subnet.DnsServers))
+		for i2, dns := range subnet.DnsServers {
+			dnsStrings[i2] = dns.DNSServer
+		}
+		subnetsMap[i] = map[string]interface{}{
+			"id":       subnet.ID,
+			"cidr":     subnet.CIDR,
+			"dhcp":     subnet.IsDHCP,
+			"gateway":  subnet.Gateway,
+			"start_ip": subnet.StartIp,
+			"end_ip":   subnet.EndIp,
+			"dns":      dnsStrings,
+		}
+	}
+
+	fields := map[string]interface{}{
+		"name":     network.Name,
+		"tags":     marshalTagNames(network.Tags),
+		"mtu":      network.Mtu,
+		"subnets":  subnetsMap,
+		"vdc_id":   network.Vdc.Id,
+		"external": network.External,
+	}
+
+	if err = setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-009]: %s", err)
+	}
+
+	return nil
+}
+
+func resourceNetworkDelete(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 	network, err := manager.GetNetwork(d.Id())
 	if err != nil {
@@ -186,127 +186,7 @@ func resourceNetworkDelete(ctx context.Context, d *schema.ResourceData, meta int
 	return nil
 }
 
-func createSubnet(d *schema.ResourceData, manager *bcc.Manager, network *bcc.Network) (err error) {
-	subnets := d.Get("subnets").([]interface{})
-	log.Printf("[DEBUG] subnets: %#v", subnets)
-
-	for _, subnetInfo := range subnets {
-		log.Printf("[DEBUG] subnetInfo: %#v", subnetInfo)
-		subnetInfo2 := subnetInfo.(map[string]interface{})
-
-		// Create subnet
-		subnet := bcc.NewSubnet(subnetInfo2["cidr"].(string), subnetInfo2["gateway"].(string),
-			subnetInfo2["start_ip"].(string), subnetInfo2["end_ip"].(string), subnetInfo2["dhcp"].(bool))
-		if err = network.CreateSubnet(&subnet); err != nil {
-			return fmt.Errorf("[ERROR-009]: %s", err)
-		}
-
-		dnsServersList := subnetInfo2["dns"].([]interface{})
-		if len(dnsServersList) > 0 {
-			dnsServers := make([]*bcc.SubnetDNSServer, len(dnsServersList))
-			for i, dns := range dnsServersList {
-				s1 := bcc.NewSubnetDNSServer(dns.(string))
-				dnsServers[i] = &s1
-			}
-
-			if err = subnet.UpdateDNSServers(dnsServers); err != nil {
-				return fmt.Errorf("[ERROR-009]: %s", err)
-			}
-		}
-
-	}
-
-	return
-}
-
-func updateSubnet(d *schema.ResourceData, manager *bcc.Manager) (diagErr diag.Diagnostics) {
-	network, err := manager.GetNetwork(d.Id())
-	if err != nil {
-		return diag.Errorf("[ERROR-009]: %s", err)
-	}
-
-	subnetsRaw, err := network.GetSubnets()
-	if err != nil {
-		return diag.Errorf("[ERROR-009]: %s", err)
-	}
-
-	subnets := d.Get("subnets").([]interface{})
-	for _, subnetInfo := range subnets {
-		subnetInfo2 := subnetInfo.(map[string]interface{})
-		var subnet *bcc.Subnet
-		for _, currentSubnet := range subnetsRaw {
-			if currentSubnet.CIDR == subnetInfo2["cidr"] {
-				subnet = currentSubnet
-				break
-			}
-		}
-		dnsServersList := subnetInfo2["dns"].([]interface{})
-		newDnsServers := make([]*bcc.SubnetDNSServer, len(dnsServersList))
-		for i, dns := range dnsServersList {
-			s1 := bcc.NewSubnetDNSServer(dns.(string))
-			newDnsServers[i] = &s1
-		}
-		if subnet == nil {
-			// create new subnet
-			newSubnet := bcc.NewSubnet(subnetInfo2["cidr"].(string), subnetInfo2["gateway"].(string),
-				subnetInfo2["start_ip"].(string), subnetInfo2["end_ip"].(string), subnetInfo2["dhcp"].(bool))
-			if err = network.CreateSubnet(&newSubnet); err != nil {
-				return diag.Errorf("[ERROR-009]: %s", err)
-			}
-			if err = newSubnet.UpdateDNSServers(newDnsServers); err != nil {
-				return diag.Errorf("[ERROR-009]: %s", err)
-			}
-		} else {
-			// update preserved subnet
-			shouldUpdate := false
-			if subnet.Gateway != subnetInfo2["gateway"] {
-				return diag.Errorf("[ERROR-009]: You cannot change gateway")
-			}
-			if subnet.StartIp != subnetInfo2["start_ip"] || subnet.EndIp != subnetInfo2["end_ip"] || subnet.IsDHCP != subnetInfo2["dhcp"] {
-				subnet.EndIp = subnetInfo2["end_ip"].(string)
-				subnet.StartIp = subnetInfo2["start_ip"].(string)
-				subnet.IsDHCP = subnetInfo2["dhcp"].(bool)
-				shouldUpdate = true
-			}
-			if len(subnet.DnsServers) != len(newDnsServers) {
-				subnet.DnsServers = newDnsServers
-				shouldUpdate = true
-			} else {
-				for i, oldDns := range subnet.DnsServers {
-					if oldDns.DNSServer != newDnsServers[i].DNSServer {
-						subnet.DnsServers = newDnsServers
-						shouldUpdate = true
-						break
-					}
-				}
-			}
-			if shouldUpdate {
-				if err = subnet.UpdateDNSServers(subnet.DnsServers); err != nil {
-					return diag.Errorf("[ERROR-009]: %s", err)
-				}
-			}
-		}
-	}
-	for _, subnet := range subnetsRaw {
-		var subnetInfo2 map[string]interface{}
-		for _, subnetInfo := range subnets {
-			subnetInfo2 = subnetInfo.(map[string]interface{})
-			if subnet.CIDR == subnetInfo2["cidr"] {
-				break
-			}
-		}
-		if subnetInfo2 == nil {
-			// delete obsolete subnet
-			if err := subnet.Delete(); err != nil {
-				return diag.Errorf("[ERROR-009]: %s", err)
-			}
-		}
-	}
-
-	return
-}
-
-func resourceNetworkImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+func resourceNetworkImport(_ context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 	manager := meta.(*CombinedConfig).Manager()
 	network, err := manager.GetNetwork(d.Id())
 	if err != nil {

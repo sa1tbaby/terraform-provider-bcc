@@ -97,47 +97,6 @@ func resourceLbaasPoolCreate(ctx context.Context, d *schema.ResourceData, meta i
 	return resourceLbaasPoolRead(ctx, d, meta)
 }
 
-func resourceLbaasPoolRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (diagErr diag.Diagnostics) {
-	manager := meta.(*CombinedConfig).Manager()
-	lbaasId := d.Get("lbaas_id").(string)
-
-	lbaas, err := manager.GetLoadBalancer(lbaasId)
-	if err != nil {
-		return diag.Errorf("[ERROR-050]: crash via getting lbaas by id: %s", err)
-	}
-
-	lbaasPool, err := lbaas.GetLoadBalancerPool(d.Id())
-	if err != nil {
-		return resourceLbaasPoolDelete(ctx, d, "[ERROR-050]:")
-	}
-
-	poolMembers := make([]map[string]interface{}, len(lbaasPool.Members))
-	for i, member := range lbaasPool.Members {
-		poolMembers[i] = map[string]interface{}{
-			"port":   member.Port,
-			"weight": member.Weight,
-			"vm_id":  member.Vm.ID,
-		}
-	}
-
-	fields := map[string]interface{}{
-		"lbaas_id":            lbaas.ID,
-		"port":                lbaasPool.Port,
-		"connlimit":           lbaasPool.Connlimit,
-		"method":              lbaasPool.Method,
-		"protocol":            lbaasPool.Protocol,
-		"session_persistence": lbaasPool.SessionPersistence,
-		"member":              poolMembers,
-		"cookie_name":         lbaas.Name,
-	}
-
-	if err := setResourceDataFromMap(d, fields); err != nil {
-		return diag.Errorf("[ERROR-050] crash via reading LbaasPool: %s", err)
-	}
-
-	return
-}
-
 func resourceLbaasPoolUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 
@@ -206,7 +165,48 @@ func resourceLbaasPoolUpdate(ctx context.Context, d *schema.ResourceData, meta i
 	return resourceLbaasPoolRead(ctx, d, meta)
 }
 
-func resourceLbaasPoolDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceLbaasPoolRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (diagErr diag.Diagnostics) {
+	manager := meta.(*CombinedConfig).Manager()
+	lbaasId := d.Get("lbaas_id").(string)
+
+	lbaas, err := manager.GetLoadBalancer(lbaasId)
+	if err != nil {
+		return diag.Errorf("[ERROR-050]: crash via getting lbaas by id: %s", err)
+	}
+
+	lbaasPool, err := lbaas.GetLoadBalancerPool(d.Id())
+	if err != nil {
+		return resourceLbaasPoolDelete(ctx, d, "[ERROR-050]:")
+	}
+
+	poolMembers := make([]map[string]interface{}, len(lbaasPool.Members))
+	for i, member := range lbaasPool.Members {
+		poolMembers[i] = map[string]interface{}{
+			"port":   member.Port,
+			"weight": member.Weight,
+			"vm_id":  member.Vm.ID,
+		}
+	}
+
+	fields := map[string]interface{}{
+		"lbaas_id":            lbaas.ID,
+		"port":                lbaasPool.Port,
+		"connlimit":           lbaasPool.Connlimit,
+		"method":              lbaasPool.Method,
+		"protocol":            lbaasPool.Protocol,
+		"session_persistence": lbaasPool.SessionPersistence,
+		"member":              poolMembers,
+		"cookie_name":         lbaas.Name,
+	}
+
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-050] crash via reading LbaasPool: %s", err)
+	}
+
+	return
+}
+
+func resourceLbaasPoolDelete(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 
 	lbaas, err := manager.GetLoadBalancer(d.Get("lbaas_id").(string))
@@ -227,7 +227,7 @@ func resourceLbaasPoolDelete(ctx context.Context, d *schema.ResourceData, meta i
 	return nil
 }
 
-func resourceLbaasPoolImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+func resourceLbaasPoolImport(_ context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 	manager := meta.(*CombinedConfig).Manager()
 
 	id := d.Id()

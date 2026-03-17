@@ -1,6 +1,11 @@
 package bcc_terraform
 
 import (
+	"errors"
+	"fmt"
+	"regexp"
+
+	"github.com/basis-cloud/bcc-go/bcc"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
@@ -99,4 +104,30 @@ func (args *Arguments) injectContextResourceFirewallTemplate() {
 		},
 		"tags": newTagNamesResourceSchema("tags of the firewall template"),
 	})
+}
+
+func setUpRule(rule *bcc.FirewallRule, d *schema.ResourceData) (err error) {
+	rule.DstPortRangeMax = nil
+	rule.DstPortRangeMin = nil
+	portRange := d.Get("port_range").(string)
+
+	if portRange == "" {
+		return nil
+	}
+	var min, max int
+	var re_for_port_range = regexp.MustCompile(`(?m)^(\d+:\d+)$`)
+	var re_for_port = regexp.MustCompile(`(?m)^(\d+)$`)
+	if len(re_for_port_range.FindStringIndex(portRange)) > 0 {
+		fmt.Sscanf(portRange, "%d:%d", &min, &max)
+		rule.DstPortRangeMax = &max
+		rule.DstPortRangeMin = &min
+	} else if len(re_for_port.FindStringIndex(portRange)) > 0 {
+		fmt.Sscanf(portRange, "%d", &min)
+		rule.DstPortRangeMin = &min
+	} else {
+		return errors.New("PORT RANGE UNSUPPORTED FORMAT, " +
+			"should be `val:val` or `val`")
+	}
+
+	return nil
 }

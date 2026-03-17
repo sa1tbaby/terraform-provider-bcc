@@ -20,8 +20,8 @@ func resourceS3StorageBucket() *schema.Resource {
 
 	return &schema.Resource{
 		CreateContext: resourceS3StorageBucketCreate,
-		ReadContext:   resourceS3StorageBucketRead,
 		UpdateContext: resourceS3StorageBucketUpdate,
+		ReadContext:   resourceS3StorageBucketRead,
 		DeleteContext: resourceS3StorageBucketDelete,
 		Importer: &schema.ResourceImporter{
 			StateContext: resourceS3StorageBucketImport,

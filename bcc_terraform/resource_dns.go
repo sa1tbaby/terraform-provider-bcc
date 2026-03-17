@@ -19,8 +19,8 @@ func resourceDns() *schema.Resource {
 
 	return &schema.Resource{
 		CreateContext: resourceDnsCreate,
-		ReadContext:   resourceDnsRead,
 		DeleteContext: resourceDnsDelete,
+		ReadContext:   resourceDnsRead,
 		UpdateContext: resourceDnsUpdate,
 		Importer: &schema.ResourceImporter{
 			StateContext: resourceDnsImport,
@@ -60,42 +60,6 @@ func resourceDnsCreate(ctx context.Context, d *schema.ResourceData, meta interfa
 	return resourceDnsRead(ctx, d, meta)
 }
 
-func resourceDnsRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	manager := meta.(*CombinedConfig).Manager()
-
-	dns, err := manager.GetDns(d.Id())
-	if err != nil {
-		resourceReadCheck(d, err, "[ERROR-046]:")
-	}
-
-	fields := map[string]interface{}{
-		"name":       dns.Name,
-		"project_id": dns.Project.ID,
-		"tags":       marshalTagNames(dns.Tags),
-	}
-
-	if err := setResourceDataFromMap(d, fields); err != nil {
-		return diag.Errorf("[ERROR-046]: crash via set attrs: %s", err)
-	}
-
-	return nil
-}
-
-func resourceDnsDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	manager := meta.(*CombinedConfig).Manager()
-	dns, err := manager.GetDns(d.Id())
-	if err != nil {
-		return diag.Errorf("[ERROR-046]: crash via get Dns: %s", err)
-	}
-
-	err = dns.Delete()
-	if err != nil {
-		return diag.Errorf("[ERROR-046]: crash via delete Dns: %s", err)
-	}
-
-	return nil
-}
-
 func resourceDnsUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	needUpdate := false
 	manager := meta.(*CombinedConfig).Manager()
@@ -115,6 +79,27 @@ func resourceDnsUpdate(ctx context.Context, d *schema.ResourceData, meta interfa
 		}
 	}
 	return resourceDnsRead(ctx, d, meta)
+}
+
+func resourceDnsRead(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	manager := meta.(*CombinedConfig).Manager()
+
+	dns, err := manager.GetDns(d.Id())
+	if err != nil {
+		resourceReadCheck(d, err, "[ERROR-046]:")
+	}
+
+	fields := map[string]interface{}{
+		"name":       dns.Name,
+		"project_id": dns.Project.ID,
+		"tags":       marshalTagNames(dns.Tags),
+	}
+
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-046]: crash via set attrs: %s", err)
+	}
+
+	return nil
 }
 
 func resourceDnsImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {

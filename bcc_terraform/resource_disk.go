@@ -18,8 +18,8 @@ func resourceDisk() *schema.Resource {
 
 	return &schema.Resource{
 		CreateContext: resourceDiskCreate,
-		ReadContext:   resourceDiskRead,
 		UpdateContext: resourceDiskUpdate,
+		ReadContext:   resourceDiskRead,
 		DeleteContext: resourceDiskDelete,
 		Importer: &schema.ResourceImporter{
 			StateContext: resourceDiskImport,
@@ -72,30 +72,6 @@ func resourceDiskCreate(ctx context.Context, d *schema.ResourceData, meta interf
 	log.Printf("[INFO] Disk created, ID: %s", d.Id())
 
 	return resourceDiskRead(ctx, d, meta)
-}
-
-func resourceDiskRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	manager := meta.(*CombinedConfig).Manager()
-
-	disk, err := manager.GetDisk(d.Id())
-	if err != nil {
-		return resourceReadCheck(d, err, "[ERROR-014]:")
-	}
-
-	fields := map[string]interface{}{
-		"vdc_id":             disk.Vdc.ID,
-		"size":               disk.Size,
-		"name":               disk.Name,
-		"storage_profile_id": disk.StorageProfile.ID,
-		"external_id":        disk.ExternalID,
-		"tags":               marshalTagNames(disk.Tags),
-	}
-
-	if err := setResourceDataFromMap(d, fields); err != nil {
-		return diag.Errorf("[ERROR-014]: crash via set attrs: %s", err)
-	}
-
-	return nil
 }
 
 func resourceDiskUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
@@ -163,7 +139,31 @@ func resourceDiskUpdate(ctx context.Context, d *schema.ResourceData, meta interf
 	return resourceDiskRead(ctx, d, meta)
 }
 
-func resourceDiskDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceDiskRead(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	manager := meta.(*CombinedConfig).Manager()
+
+	disk, err := manager.GetDisk(d.Id())
+	if err != nil {
+		return resourceReadCheck(d, err, "[ERROR-014]:")
+	}
+
+	fields := map[string]interface{}{
+		"vdc_id":             disk.Vdc.ID,
+		"size":               disk.Size,
+		"name":               disk.Name,
+		"storage_profile_id": disk.StorageProfile.ID,
+		"external_id":        disk.ExternalID,
+		"tags":               marshalTagNames(disk.Tags),
+	}
+
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-014]: crash via set attrs: %s", err)
+	}
+
+	return nil
+}
+
+func resourceDiskDelete(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 	disk, err := manager.GetDisk(d.Id())
 	if err != nil {
@@ -189,7 +189,7 @@ func resourceDiskDelete(ctx context.Context, d *schema.ResourceData, meta interf
 	return nil
 }
 
-func resourceDiskImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+func resourceDiskImport(_ context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 	manager := meta.(*CombinedConfig).Manager()
 
 	disk, err := manager.GetDisk(d.Id())

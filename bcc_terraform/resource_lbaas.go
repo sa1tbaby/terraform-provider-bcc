@@ -17,8 +17,8 @@ func resourceLbaas() *schema.Resource {
 
 	return &schema.Resource{
 		CreateContext: resourceLbaasCreate,
-		ReadContext:   resourceLbaasRead,
 		UpdateContext: resourceLbaasUpdate,
+		ReadContext:   resourceLbaasRead,
 		DeleteContext: resourceLbaasDelete,
 		Importer: &schema.ResourceImporter{
 			StateContext: resourceLbaasImport,
@@ -81,39 +81,6 @@ func resourceLbaasCreate(ctx context.Context, d *schema.ResourceData, meta inter
 	return resourceLbaasRead(ctx, d, meta)
 }
 
-func resourceLbaasRead(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	manager := meta.(*CombinedConfig).Manager()
-	lbaas, err := manager.GetLoadBalancer(d.Id())
-	if err != nil {
-		return resourceReadCheck(d, err, "[ERROR-049]:")
-	}
-
-	lbaasPort := make([]interface{}, 1)
-	lbaasPort[0] = map[string]interface{}{
-		"ip_address": lbaas.Port.IpAddress,
-		"network_id": lbaas.Port.Network.ID,
-	}
-
-	fields := map[string]interface{}{
-		"name":        lbaas.Name,
-		"floating":    false,
-		"floating_ip": "",
-		"port":        lbaasPort,
-		"vdc_id":      lbaas.Vdc.ID,
-		"tags":        marshalTagNames(lbaas.Tags),
-	}
-	if lbaas.Floating != nil {
-		fields["floating"] = true
-		fields["floating_ip"] = lbaas.Floating.IpAddress
-	}
-
-	if err = setResourceDataFromMap(d, fields); err != nil {
-		return diag.Errorf("[ERROR-049]: crash via set attrs: %s", err)
-	}
-
-	return nil
-}
-
 func resourceLbaasUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 	lbaas, err := manager.GetLoadBalancer(d.Id())
@@ -152,6 +119,39 @@ func resourceLbaasUpdate(ctx context.Context, d *schema.ResourceData, meta inter
 	}
 
 	return resourceLbaasRead(ctx, d, meta)
+}
+
+func resourceLbaasRead(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	manager := meta.(*CombinedConfig).Manager()
+	lbaas, err := manager.GetLoadBalancer(d.Id())
+	if err != nil {
+		return resourceReadCheck(d, err, "[ERROR-049]:")
+	}
+
+	lbaasPort := make([]interface{}, 1)
+	lbaasPort[0] = map[string]interface{}{
+		"ip_address": lbaas.Port.IpAddress,
+		"network_id": lbaas.Port.Network.ID,
+	}
+
+	fields := map[string]interface{}{
+		"name":        lbaas.Name,
+		"floating":    false,
+		"floating_ip": "",
+		"port":        lbaasPort,
+		"vdc_id":      lbaas.Vdc.ID,
+		"tags":        marshalTagNames(lbaas.Tags),
+	}
+	if lbaas.Floating != nil {
+		fields["floating"] = true
+		fields["floating_ip"] = lbaas.Floating.IpAddress
+	}
+
+	if err = setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-049]: crash via set attrs: %s", err)
+	}
+
+	return nil
 }
 
 func resourceLbaasDelete(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {

@@ -17,8 +17,8 @@ func resourceVdc() *schema.Resource {
 	args.injectContextHypervisorById()
 
 	return &schema.Resource{
-		CreateContext: resourceVdcCreate,
 		ReadContext:   resourceVdcRead,
+		CreateContext: resourceVdcCreate,
 		UpdateContext: resourceVdcUpdate,
 		DeleteContext: resourceVdcDelete,
 		Importer: &schema.ResourceImporter{
@@ -55,7 +55,7 @@ func resourceVdcCreate(ctx context.Context, d *schema.ResourceData, meta interfa
 	vdc := bcc.NewVdc(d.Get("name").(string), targetHypervisor)
 	vdc.Tags = unmarshalTagNames(d.Get("tags"))
 
-	// if we creating multiple vdc at once, there are need some time to get new vnid
+	// if we're creating multiple vdc at once, there are need some time to get new vnid
 	f := func() error { return targetProject.CreateVdc(&vdc) }
 	if err = repeatOnError(f, targetProject); err != nil {
 		return diag.Errorf("[ERROR-006]: crash via creating vdc: %s", err)
@@ -71,7 +71,34 @@ func resourceVdcCreate(ctx context.Context, d *schema.ResourceData, meta interfa
 	return resourceVdcRead(ctx, d, meta)
 }
 
-func resourceVdcRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceVdcUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	manager := meta.(*CombinedConfig).Manager()
+
+	vdc, err := manager.GetVdc(d.Id())
+	if err != nil {
+		return diag.Errorf("[ERROR-006] id: Error getting vdc: %s", err)
+	}
+	if d.HasChange("hypervisor_id") {
+		return diag.Errorf("[ERROR-006] hypervisor_id: you can`t change hypervisor type on created vdc")
+	}
+	if d.HasChange("name") {
+		vdc.Name = d.Get("name").(string)
+	}
+	if d.HasChange("tags") {
+		vdc.Tags = unmarshalTagNames(d.Get("tags"))
+	}
+	err = vdc.Update()
+	if err != nil {
+		return diag.Errorf("[ERROR-006] name: Error rename vdc: %s", err)
+	}
+	if err = vdc.WaitLock(); err != nil {
+		return diag.Errorf("[ERROR-006] Error locking vdc: %s", err)
+	}
+
+	return resourceVdcRead(ctx, d, meta)
+}
+
+func resourceVdcRead(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 	vdc, err := manager.GetVdc(d.Id())
 	if err != nil {
@@ -132,34 +159,7 @@ func resourceVdcRead(ctx context.Context, d *schema.ResourceData, meta interface
 	return nil
 }
 
-func resourceVdcUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	manager := meta.(*CombinedConfig).Manager()
-
-	vdc, err := manager.GetVdc(d.Id())
-	if err != nil {
-		return diag.Errorf("[ERROR-006] id: Error getting vdc: %s", err)
-	}
-	if d.HasChange("hypervisor_id") {
-		return diag.Errorf("[ERROR-006] hypervisor_id: you can`t change hypervisor type on created vdc")
-	}
-	if d.HasChange("name") {
-		vdc.Name = d.Get("name").(string)
-	}
-	if d.HasChange("tags") {
-		vdc.Tags = unmarshalTagNames(d.Get("tags"))
-	}
-	err = vdc.Update()
-	if err != nil {
-		return diag.Errorf("[ERROR-006] name: Error rename vdc: %s", err)
-	}
-	if err = vdc.WaitLock(); err != nil {
-		return diag.Errorf("[ERROR-006] Error locking vdc: %s", err)
-	}
-
-	return resourceVdcRead(ctx, d, meta)
-}
-
-func resourceVdcDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceVdcDelete(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 	vdc, err := manager.GetVdc(d.Id())
 	if err != nil {
@@ -174,7 +174,7 @@ func resourceVdcDelete(ctx context.Context, d *schema.ResourceData, meta interfa
 	return nil
 }
 
-func resourceVdcImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+func resourceVdcImport(_ context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 	manager := meta.(*CombinedConfig).Manager()
 
 	vdc, err := manager.GetVdc(d.Id())

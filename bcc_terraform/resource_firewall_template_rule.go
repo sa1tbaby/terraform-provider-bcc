@@ -2,10 +2,8 @@ package bcc_terraform
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
-	"regexp"
 	"strings"
 	"time"
 
@@ -21,8 +19,8 @@ func resourceFirewallRule() *schema.Resource {
 
 	return &schema.Resource{
 		CreateContext: resourceFirewallRuleCreate,
-		ReadContext:   resourceFirewallRuleRead,
 		UpdateContext: resourceFirewallRuleUpdate,
+		ReadContext:   resourceFirewallRuleRead,
 		DeleteContext: resourceFirewallRuleDelete,
 		Importer: &schema.ResourceImporter{
 			StateContext: resourceFirewallImport,
@@ -67,7 +65,38 @@ func resourceFirewallRuleCreate(ctx context.Context, d *schema.ResourceData, met
 	return resourceFirewallRuleRead(ctx, d, meta)
 }
 
-func resourceFirewallRuleRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceFirewallRuleUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	manager := meta.(*CombinedConfig).Manager()
+
+	firewallId := d.Get("firewall_id").(string)
+	firewall, err := manager.GetFirewallTemplate(firewallId)
+	if err != nil {
+		return diag.Errorf("[ERROR-048}: crash via getting Firewall Template by id=%s: %s", firewallId, err)
+	}
+
+	firewallRuleId := d.Id()
+	firewallRule, err := firewall.GetRuleById(firewallRuleId)
+	if err != nil {
+		return diag.Errorf("[ERROR-048]: crash via getting fierwall Rule by id=%s: %s", firewallRuleId, err)
+	}
+
+	firewallRule.Name = d.Get("name").(string)
+	firewallRule.DestinationIp = d.Get("destination_ip").(string)
+	firewallRule.Protocol = d.Get("protocol").(string)
+	if firewallRule.Protocol == "tcp" || firewallRule.Protocol == "udp" {
+		err = setUpRule(firewallRule, d)
+		if err != nil {
+			return diag.Errorf("[ERROR-048]: crash via setting up FirewallRule: %s", err)
+		}
+	}
+	if err = firewallRule.Update(); err != nil {
+		return diag.Errorf("[ERROR-048]: crash via updating Fierwall rule: %s", err)
+	}
+
+	return resourceFirewallRuleRead(ctx, d, meta)
+}
+
+func resourceFirewallRuleRead(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 
 	firewallId := d.Get("firewall_id").(string)
@@ -113,7 +142,7 @@ func resourceFirewallRuleRead(ctx context.Context, d *schema.ResourceData, meta 
 	return nil
 }
 
-func resourceFirewallRuleUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceFirewallRuleDelete(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 
 	firewallId := d.Get("firewall_id").(string)
@@ -125,38 +154,7 @@ func resourceFirewallRuleUpdate(ctx context.Context, d *schema.ResourceData, met
 	firewallRuleId := d.Id()
 	firewallRule, err := firewall.GetRuleById(firewallRuleId)
 	if err != nil {
-		return diag.Errorf("[ERROR-048]: crash via getting fierwall Rule by id=%S: %s", firewallRuleId, err)
-	}
-
-	firewallRule.Name = d.Get("name").(string)
-	firewallRule.DestinationIp = d.Get("destination_ip").(string)
-	firewallRule.Protocol = d.Get("protocol").(string)
-	if firewallRule.Protocol == "tcp" || firewallRule.Protocol == "udp" {
-		err = setUpRule(firewallRule, d)
-		if err != nil {
-			return diag.Errorf("[ERROR-048]: crash via setting up FirewallRule: %s", err)
-		}
-	}
-	if err = firewallRule.Update(); err != nil {
-		return diag.Errorf("[ERROR-048]: crash via updating Fierwall rule: %s", err)
-	}
-
-	return resourceFirewallRuleRead(ctx, d, meta)
-}
-
-func resourceFirewallRuleDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	manager := meta.(*CombinedConfig).Manager()
-
-	firewallId := d.Get("firewall_id").(string)
-	firewall, err := manager.GetFirewallTemplate(firewallId)
-	if err != nil {
-		return diag.Errorf("[ERROR-048}: crash via getting Firewall Template by id=%s: %s", firewallId, err)
-	}
-
-	firewallRuleId := d.Id()
-	firewallRule, err := firewall.GetRuleById(firewallRuleId)
-	if err != nil {
-		return diag.Errorf("[ERROR-048]: crash via getting fierwall Rule by id=%S: %s", firewallRuleId, err)
+		return diag.Errorf("[ERROR-048]: crash via getting fierwall Rule by id=%s: %s", firewallRuleId, err)
 	}
 
 	err = firewallRule.Delete()
@@ -167,33 +165,7 @@ func resourceFirewallRuleDelete(ctx context.Context, d *schema.ResourceData, met
 	return nil
 }
 
-func setUpRule(rule *bcc.FirewallRule, d *schema.ResourceData) (err error) {
-	rule.DstPortRangeMax = nil
-	rule.DstPortRangeMin = nil
-	portRange := d.Get("port_range").(string)
-
-	if portRange == "" {
-		return nil
-	}
-	var min, max int
-	var re_for_port_range = regexp.MustCompile(`(?m)^(\d+:\d+)$`)
-	var re_for_port = regexp.MustCompile(`(?m)^(\d+)$`)
-	if len(re_for_port_range.FindStringIndex(portRange)) > 0 {
-		fmt.Sscanf(portRange, "%d:%d", &min, &max)
-		rule.DstPortRangeMax = &max
-		rule.DstPortRangeMin = &min
-	} else if len(re_for_port.FindStringIndex(portRange)) > 0 {
-		fmt.Sscanf(portRange, "%d", &min)
-		rule.DstPortRangeMin = &min
-	} else {
-		return errors.New("PORT RANGE UNSUPPORTED FORMAT, " +
-			"should be `val:val` or `val`")
-	}
-
-	return nil
-}
-
-func resourceFirewallImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+func resourceFirewallImport(_ context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 	manager := meta.(*CombinedConfig).Manager()
 
 	id := d.Id()

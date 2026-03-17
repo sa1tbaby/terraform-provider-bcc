@@ -1,6 +1,11 @@
 package bcc_terraform
 
 import (
+	"fmt"
+	"log"
+	"strings"
+
+	"github.com/basis-cloud/bcc-go/bcc"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
@@ -178,4 +183,82 @@ func (args *Arguments) injectContextResourceRouter() {
 		},
 		"tags": newTagNamesResourceSchema("tags of the router"),
 	})
+}
+
+func syncRouterPorts(d *schema.ResourceData, manager *bcc.Manager, router *bcc.Router) (err error) {
+	portsIds := d.Get("ports").([]interface{})
+	routerId := d.Id()
+
+	for _, port := range router.Ports {
+		found := false
+		for _, portId := range portsIds {
+			if strings.EqualFold(portId.(string), port.ID) {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			if port.Connected != nil && strings.EqualFold(port.Connected.ID, routerId) {
+				log.Printf("Port %s found on vm and not mentioned in the state."+
+					" Port will be detached", port.ID)
+				router.DisconnectPort(port)
+				port.WaitLock()
+			}
+		}
+	}
+
+	for _, portId := range portsIds {
+		found := false
+		for _, port := range router.Ports {
+			if port.ID == portId {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			port, err := manager.GetPort(portId.(string))
+			if err != nil {
+				return fmt.Errorf("crash via getting Port ")
+			}
+			if port.Connected != nil && port.Connected.Type == "vm_int" {
+				return fmt.Errorf("unable to bind a port that is already connected to the server")
+			}
+			if port.Connected != nil && port.Connected.ID != routerId {
+				router.DisconnectPort(port)
+				port.WaitLock()
+			}
+			port, err = manager.GetPort(portId.(string))
+			if err != nil {
+				return fmt.Errorf("cannot get port `%s`: %s", portId, err)
+			}
+			log.Printf("Port `%s` will be Attached", port.ID)
+			if err := router.ConnectPort(port, true); err != nil {
+				return fmt.Errorf("cannot attach port `%s`: %s", port.ID, err)
+			}
+		}
+	}
+
+	return
+}
+
+func syncFloating(d *schema.ResourceData, router *bcc.Router) (err error) {
+	oldFloating, newFloating := d.GetChange("floating")
+
+	if !oldFloating.(bool) && newFloating.(bool) {
+		router.Floating = &bcc.Port{ID: "RANDOM_FIP"}
+	} else if oldFloating.(bool) && !newFloating.(bool) {
+		router.Floating = nil
+	}
+
+	if err = repeatOnError(router.Update, router); err != nil {
+		return fmt.Errorf("crash via updating floating for router: %s", err)
+	}
+	router.WaitLock()
+	if err = d.Set("floating", router.Floating != nil); err != nil {
+		return fmt.Errorf("crash via setting floating: %s", err)
+	}
+
+	return nil
 }

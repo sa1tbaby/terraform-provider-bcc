@@ -16,8 +16,8 @@ func resourceProject() *schema.Resource {
 
 	return &schema.Resource{
 		CreateContext: resourceProjectCreate,
-		ReadContext:   resourceProjectRead,
 		UpdateContext: resourceProjectUpdate,
+		ReadContext:   resourceProjectRead,
 		DeleteContext: resourceProjectDelete,
 		Importer: &schema.ResourceImporter{
 			StateContext: resourceProjectImport,
@@ -75,25 +75,6 @@ func resourceProjectCreate(ctx context.Context, d *schema.ResourceData, meta int
 	return resourceProjectRead(ctx, d, meta)
 }
 
-func resourceProjectRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	manager := meta.(*CombinedConfig).Manager()
-	project, err := manager.GetProject(d.Id())
-	if err != nil {
-		resourceReadCheck(d, err, "[ERROR-002]:")
-	}
-
-	fields := map[string]interface{}{
-		"name": project.Name,
-		"tags": marshalTagNames(project.Tags),
-	}
-
-	if err := setResourceDataFromMap(d, fields); err != nil {
-		return diag.Errorf("[ERROR-002] crash via set attrs: %s", err)
-	}
-
-	return nil
-}
-
 func resourceProjectUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 
@@ -114,6 +95,25 @@ func resourceProjectUpdate(ctx context.Context, d *schema.ResourceData, meta int
 	project.WaitLock()
 
 	return resourceProjectRead(ctx, d, meta)
+}
+
+func resourceProjectRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	manager := meta.(*CombinedConfig).Manager()
+	project, err := manager.GetProject(d.Id())
+	if err != nil {
+		resourceReadCheck(d, err, "[ERROR-002]:")
+	}
+
+	fields := map[string]interface{}{
+		"name": project.Name,
+		"tags": marshalTagNames(project.Tags),
+	}
+
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-002] crash via set attrs: %s", err)
+	}
+
+	return nil
 }
 
 func resourceProjectDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {

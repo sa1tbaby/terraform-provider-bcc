@@ -692,3 +692,27 @@ func resourceReadCheck(d *schema.ResourceData, err interface{}, msg string) diag
 		return diag.Errorf("%s crash via read resource: %s", msg, err)
 	}
 }
+
+func ensureLocationCreated(vdcId string, manager *bcc.Manager) error {
+	vdc, err := manager.GetVdc(vdcId)
+	if err != nil {
+		return err
+	}
+	if vdc.Paas != nil {
+		return nil
+	}
+	err = manager.CreatePaasLocation(vdcId)
+	if err != nil {
+		return err
+	}
+	for {
+		vdc, err := manager.GetVdc(vdcId)
+		if err != nil {
+			return err
+		}
+		if vdc.Paas != nil && !vdc.Paas.Locked {
+			return nil
+		}
+		time.Sleep(time.Second)
+	}
+}

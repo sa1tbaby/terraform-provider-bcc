@@ -20,8 +20,8 @@ func resourceKubernetes() *schema.Resource {
 
 	return &schema.Resource{
 		CreateContext: resourceKubernetesCreate,
-		ReadContext:   resourceKubernetesRead,
 		UpdateContext: resourceKubernetesUpdate,
+		ReadContext:   resourceKubernetesRead,
 		DeleteContext: resourceKubernetesDelete,
 		Importer: &schema.ResourceImporter{
 			StateContext: resourceKubernetesImport,
@@ -120,57 +120,6 @@ func resourceKubernetesCreate(ctx context.Context, d *schema.ResourceData, meta 
 	return resourceKubernetesRead(ctx, d, meta)
 }
 
-func resourceKubernetesRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	manager := meta.(*CombinedConfig).Manager()
-	k8s, err := manager.GetKubernetes(d.Id())
-	if err != nil {
-		return resourceReadCheck(d, err, "[ERROR-053]:")
-	}
-
-	vms := make([]*string, len(k8s.Vms))
-	for i, vm := range k8s.Vms {
-		vms[i] = &vm.ID
-	}
-
-	err = k8s.GetKubernetesConfigUrl()
-	if err != nil {
-		return diag.Errorf("[ERROR-053]: crash via getting k8s config: %s", err)
-	}
-
-	dashboard, err := k8s.GetKubernetesDashBoardUrl()
-	if err != nil {
-		return diag.Errorf("[ERROR-053]: crash via getting k8s dashboard url: %s", err)
-	}
-
-	fields := map[string]interface{}{
-		"vdc_id":                  k8s.Vdc.ID,
-		"name":                    k8s.Name,
-		"node_cpu":                k8s.NodeCpu,
-		"node_ram":                k8s.NodeRam,
-		"nodes_count":             k8s.NodesCount,
-		"node_disk_size":          k8s.NodeDiskSize,
-		"platform":                k8s.NodePlatform.ID,
-		"template_id":             k8s.Template.ID,
-		"node_storage_profile_id": k8s.NodeStorageProfile.ID,
-		"tags":                    marshalTagNames(k8s.Tags),
-		"vms":                     vms,
-		"floating":                false,
-		"floating_ip":             "",
-		"dashboard_url":           fmt.Sprint(manager.BaseURL, *dashboard.DashBoardUrl),
-	}
-
-	if k8s.Floating != nil {
-		fields["floating"] = true
-		fields["floating_ip"] = k8s.Floating.IpAddress
-	}
-
-	if err = setResourceDataFromMap(d, fields); err != nil {
-		return diag.Errorf("[ERROR-053]: crash via set attrs: %s", err)
-	}
-
-	return nil
-}
-
 func resourceKubernetesUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 	vdc, err := GetVdcById(d, manager)
@@ -235,6 +184,57 @@ func resourceKubernetesUpdate(ctx context.Context, d *schema.ResourceData, meta 
 	}
 
 	return resourceKubernetesRead(ctx, d, meta)
+}
+
+func resourceKubernetesRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	manager := meta.(*CombinedConfig).Manager()
+	k8s, err := manager.GetKubernetes(d.Id())
+	if err != nil {
+		return resourceReadCheck(d, err, "[ERROR-053]:")
+	}
+
+	vms := make([]*string, len(k8s.Vms))
+	for i, vm := range k8s.Vms {
+		vms[i] = &vm.ID
+	}
+
+	err = k8s.GetKubernetesConfigUrl()
+	if err != nil {
+		return diag.Errorf("[ERROR-053]: crash via getting k8s config: %s", err)
+	}
+
+	dashboard, err := k8s.GetKubernetesDashBoardUrl()
+	if err != nil {
+		return diag.Errorf("[ERROR-053]: crash via getting k8s dashboard url: %s", err)
+	}
+
+	fields := map[string]interface{}{
+		"vdc_id":                  k8s.Vdc.ID,
+		"name":                    k8s.Name,
+		"node_cpu":                k8s.NodeCpu,
+		"node_ram":                k8s.NodeRam,
+		"nodes_count":             k8s.NodesCount,
+		"node_disk_size":          k8s.NodeDiskSize,
+		"platform":                k8s.NodePlatform.ID,
+		"template_id":             k8s.Template.ID,
+		"node_storage_profile_id": k8s.NodeStorageProfile.ID,
+		"tags":                    marshalTagNames(k8s.Tags),
+		"vms":                     vms,
+		"floating":                false,
+		"floating_ip":             "",
+		"dashboard_url":           fmt.Sprint(manager.BaseURL, *dashboard.DashBoardUrl),
+	}
+
+	if k8s.Floating != nil {
+		fields["floating"] = true
+		fields["floating_ip"] = k8s.Floating.IpAddress
+	}
+
+	if err = setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-053]: crash via set attrs: %s", err)
+	}
+
+	return nil
 }
 
 func resourceKubernetesDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {

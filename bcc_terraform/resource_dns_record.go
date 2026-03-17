@@ -19,8 +19,8 @@ func resourceDnsRecord() *schema.Resource {
 
 	return &schema.Resource{
 		CreateContext: resourceDnsRecordCreate,
-		ReadContext:   resourceDnsRecordRead,
 		UpdateContext: resourceDnsRecordUpdate,
+		ReadContext:   resourceDnsRecordRead,
 		DeleteContext: resourceDnsRecordDelete,
 		Importer: &schema.ResourceImporter{
 			StateContext: resourceDnsRecordImport,

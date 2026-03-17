@@ -16,8 +16,8 @@ func resourcePort() *schema.Resource {
 
 	return &schema.Resource{
 		CreateContext: resourcePortCreate,
-		ReadContext:   resourcePortRead,
 		UpdateContext: resourcePortUpdate,
+		ReadContext:   resourcePortRead,
 		DeleteContext: resourcePortDelete,
 		Importer: &schema.ResourceImporter{
 			StateContext: resourcePortImport,
@@ -96,33 +96,6 @@ func resourcePortCreate(ctx context.Context, d *schema.ResourceData, meta interf
 	return resourcePortRead(ctx, d, meta)
 }
 
-func resourcePortRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	manager := meta.(*CombinedConfig).Manager()
-	port, err := manager.GetPort(d.Id())
-	if err != nil {
-		return resourceReadCheck(d, err, "[ERROR-045]:")
-	}
-
-	firewallTemplates := make([]*string, len(port.FirewallTemplates))
-	for i, firewall := range port.FirewallTemplates {
-		firewallTemplates[i] = &firewall.ID
-	}
-
-	fields := map[string]interface{}{
-		"ip_address":         port.IpAddress,
-		"network_id":         port.Network.ID,
-		"vdc_id":             port.Vdc.ID,
-		"tags":               marshalTagNames(port.Tags),
-		"firewall_templates": firewallTemplates,
-	}
-
-	if err = setResourceDataFromMap(d, fields); err != nil {
-		return diag.Errorf("[ERROR-045] crash via set attrs: %s", err)
-	}
-
-	return nil
-}
-
 func resourcePortUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 
@@ -162,6 +135,33 @@ func resourcePortUpdate(ctx context.Context, d *schema.ResourceData, meta interf
 		return diag.Errorf("[ERROR-045] crash via port waitlock: %s", err)
 	}
 	return resourcePortRead(ctx, d, meta)
+}
+
+func resourcePortRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	manager := meta.(*CombinedConfig).Manager()
+	port, err := manager.GetPort(d.Id())
+	if err != nil {
+		return resourceReadCheck(d, err, "[ERROR-045]:")
+	}
+
+	firewallTemplates := make([]*string, len(port.FirewallTemplates))
+	for i, firewall := range port.FirewallTemplates {
+		firewallTemplates[i] = &firewall.ID
+	}
+
+	fields := map[string]interface{}{
+		"ip_address":         port.IpAddress,
+		"network_id":         port.Network.ID,
+		"vdc_id":             port.Vdc.ID,
+		"tags":               marshalTagNames(port.Tags),
+		"firewall_templates": firewallTemplates,
+	}
+
+	if err = setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-045] crash via set attrs: %s", err)
+	}
+
+	return nil
 }
 
 func resourcePortDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {

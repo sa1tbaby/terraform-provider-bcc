@@ -18,8 +18,8 @@ func resourceAffinityGroup() *schema.Resource {
 
 	return &schema.Resource{
 		CreateContext: resourceAffinityGroupCreate,
-		ReadContext:   resourceAffinityGroupRead,
 		UpdateContext: resourceAffinityGroupUpdate,
+		ReadContext:   resourceAffinityGroupRead,
 		DeleteContext: resourceAffinityGroupDelete,
 
 		Importer: &schema.ResourceImporter{
@@ -68,34 +68,6 @@ func resourceAffinityGroupCreate(ctx context.Context, d *schema.ResourceData, me
 	return resourceAffinityGroupRead(ctx, d, meta)
 }
 
-func resourceAffinityGroupRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	manager := meta.(*CombinedConfig).Manager()
-
-	affGroup, err := manager.GetAffinityGroup(d.Id())
-	if err != nil {
-		return resourceReadCheck(d, err, "[ERROR-042]:")
-	}
-
-	vms := make([]map[string]interface{}, len(affGroup.Vms))
-	for i, vm := range affGroup.Vms {
-		vms[i] = map[string]interface{}{"id": vm.ID, "name": vm.Name}
-	}
-
-	fields := map[string]interface{}{
-		"vdc_id":      affGroup.Vdc.ID,
-		"name":        affGroup.Name,
-		"description": affGroup.Description,
-		"policy":      affGroup.Policy,
-		"vms":         vms,
-	}
-
-	if err := setResourceDataFromMap(d, fields); err != nil {
-		return diag.Errorf("[ERROR-042]: crash via set attrs: %s", err)
-	}
-
-	return nil
-}
-
 func resourceAffinityGroupUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 	needUpdate := false
@@ -124,7 +96,35 @@ func resourceAffinityGroupUpdate(ctx context.Context, d *schema.ResourceData, me
 	return resourceAffinityGroupRead(ctx, d, meta)
 }
 
-func resourceAffinityGroupDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceAffinityGroupRead(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	manager := meta.(*CombinedConfig).Manager()
+
+	affGroup, err := manager.GetAffinityGroup(d.Id())
+	if err != nil {
+		return resourceReadCheck(d, err, "[ERROR-042]:")
+	}
+
+	vms := make([]map[string]interface{}, len(affGroup.Vms))
+	for i, vm := range affGroup.Vms {
+		vms[i] = map[string]interface{}{"id": vm.ID, "name": vm.Name}
+	}
+
+	fields := map[string]interface{}{
+		"vdc_id":      affGroup.Vdc.ID,
+		"name":        affGroup.Name,
+		"description": affGroup.Description,
+		"policy":      affGroup.Policy,
+		"vms":         vms,
+	}
+
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-042]: crash via set attrs: %s", err)
+	}
+
+	return nil
+}
+
+func resourceAffinityGroupDelete(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 
 	affGroup, err := manager.GetAffinityGroup(d.Id())
@@ -140,7 +140,7 @@ func resourceAffinityGroupDelete(ctx context.Context, d *schema.ResourceData, me
 	return nil
 }
 
-func resourceAffinityGroupImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+func resourceAffinityGroupImport(_ context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 	manager := meta.(*CombinedConfig).Manager()
 
 	affGroup, err := manager.GetAffinityGroup(d.Id())

@@ -19,9 +19,9 @@ func resourceDns() *schema.Resource {
 
 	return &schema.Resource{
 		CreateContext: resourceDnsCreate,
-		DeleteContext: resourceDnsDelete,
-		ReadContext:   resourceDnsRead,
 		UpdateContext: resourceDnsUpdate,
+		ReadContext:   resourceDnsRead,
+		DeleteContext: resourceDnsDelete,
 		Importer: &schema.ResourceImporter{
 			StateContext: resourceDnsImport,
 		},
@@ -97,6 +97,21 @@ func resourceDnsRead(_ context.Context, d *schema.ResourceData, meta interface{}
 
 	if err := setResourceDataFromMap(d, fields); err != nil {
 		return diag.Errorf("[ERROR-046]: crash via set attrs: %s", err)
+	}
+
+	return nil
+}
+
+func resourceDnsDelete(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	manager := meta.(*CombinedConfig).Manager()
+	dns, err := manager.GetDns(d.Id())
+	if err != nil {
+		return diag.Errorf("[ERROR-046]: crash via get Dns: %s", err)
+	}
+
+	err = dns.Delete()
+	if err != nil {
+		return diag.Errorf("[ERROR-046]: crash via delete Dns: %s", err)
 	}
 
 	return nil

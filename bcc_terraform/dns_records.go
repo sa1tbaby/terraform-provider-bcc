@@ -4,7 +4,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
-func (args *Arguments) injectCreateDnsRecord() {
+func (args *Arguments) injectContextResourceDnsRecord() {
 	args.merge(Arguments{
 		"data": {
 			Type:        schema.TypeString,

@@ -11,8 +11,8 @@ import (
 
 func dataSourceFirewallTemplates() *schema.Resource {
 	args := Defaults()
-	args.injectContextVdcById()
-	args.injectResultListFirewallTemplate()
+	args.injectContextRequiredVdc()
+	args.injectContextDataFirewallTemplateList()
 
 	return &schema.Resource{
 		ReadContext: dataSourceFirewallTemplatesRead,
@@ -22,34 +22,40 @@ func dataSourceFirewallTemplates() *schema.Resource {
 
 func dataSourceFirewallTemplatesRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	targetVdc, err := GetVdcById(d, manager)
+	vdc, err := GetVdcById(d, manager)
 	if err != nil {
-		return diag.Errorf("Error getting vdc: %s", err)
+		return diag.Errorf("[ERROR-020] crash via getting vdc: %s", err)
 	}
 
-	allFirewallTemplates, err := targetVdc.GetFirewallTemplates()
+	fwTmpList, err := vdc.GetFirewallTemplates()
 	if err != nil {
-		return diag.Errorf("Error retrieving firewall templates: %s", err)
+		return diag.Errorf("[ERROR-020] crash via retrieving firewall templates: %s", err)
 	}
 
-	var flattenedRecords []map[string]interface{}
-	for _, ft := range allFirewallTemplates {
-		record := map[string]interface{}{
-			"id":   ft.ID,
-			"name": ft.Name,
+	var fwTmpMap []map[string]interface{}
+	for _, ft := range fwTmpList {
+		fields := map[string]interface{}{
+			"id":          ft.ID,
+			"name":        ft.Name,
+			"description": ft.Description,
+			"rules_count": ft.RulesCount,
+			"tags":        marshalTagNames(ft.Tags),
 		}
-		flattenedRecords = append(flattenedRecords, record)
+		fwTmpMap = append(fwTmpMap, fields)
 	}
 
-	hash, err := hashstructure.Hash(allFirewallTemplates, hashstructure.FormatV2, nil)
+	hash, err := hashstructure.Hash(fwTmpList, hashstructure.FormatV2, nil)
 	if err != nil {
-		diag.Errorf("unable to set `firewall_templates` attribute: %s", err)
+		diag.Errorf("[ERROR-020] crash via calculate hash: %s", err)
 	}
 
-	d.SetId(fmt.Sprintf("firewall_templates/%d", hash))
-
-	if err := d.Set("firewall_templates", flattenedRecords); err != nil {
-		return diag.Errorf("unable to set `firewall_templates` attribute: %s", err)
+	fields := map[string]interface{}{
+		"id":                 fmt.Sprintf("firewall_templates/%d", hash),
+		"vdc_id":             vdc.ID,
+		"firewall_templates": fwTmpMap,
+	}
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-020] crash via datasource `firewall_templates`: %s", err)
 	}
 
 	return nil

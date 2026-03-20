@@ -39,9 +39,15 @@ func dataSourceAccountRead(ctx context.Context, d *schema.ResourceData, meta int
 		return diag.Errorf("Error retrieving account: %s", err)
 	}
 
-	d.SetId(account.ID)
-	d.Set("email", account.Email)
-	d.Set("username", account.Username)
+	fields := map[string]interface{}{
+		"id":       account.ID,
+		"email":    account.Email,
+		"username": account.Username,
+	}
+
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.FromErr(err)
+	}
 
 	return nil
 }

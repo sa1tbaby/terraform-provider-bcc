@@ -14,14 +14,14 @@ import (
 
 func resourceDns() *schema.Resource {
 	args := Defaults()
-	args.injectCreateDns()
-	args.injectContextProjectById()
+	args.injectContextResourceDns()
+	args.injectContextRequiredProject()
 
 	return &schema.Resource{
 		CreateContext: resourceDnsCreate,
+		UpdateContext: resourceDnsUpdate,
 		ReadContext:   resourceDnsRead,
 		DeleteContext: resourceDnsDelete,
-		UpdateContext: resourceDnsUpdate,
 		Importer: &schema.ResourceImporter{
 			StateContext: resourceDnsImport,
 		},
@@ -46,31 +46,47 @@ func resourceDnsCreate(ctx context.Context, d *schema.ResourceData, meta interfa
 		return diag.Errorf("[ERROR-046]: 'name' must be ending by '.'")
 	}
 
-	newDns := bcc.NewDns(name)
-	newDns.Tags = unmarshalTagNames(d.Get("tags"))
+	dns := bcc.NewDns(name)
+	dns.Tags = unmarshalTagNames(d.Get("tags"))
 
-	err = project.CreateDns(&newDns)
+	err = project.CreateDns(&dns)
 	if err != nil {
-		return diag.Errorf("[ERROR-046]: creating Dns: %s", err)
+		return diag.Errorf("[ERROR-046]: crash via create Dns: %s", err)
 	}
 
-	d.SetId(newDns.ID)
-	log.Printf("[INFO-046]: Dns created, ID: %s", d.Id())
+	d.SetId(dns.ID)
+	log.Printf("[INFO]: Dns created, ID: %s", d.Id())
 
 	return resourceDnsRead(ctx, d, meta)
 }
 
-func resourceDnsRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceDnsUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	needUpdate := false
 	manager := meta.(*CombinedConfig).Manager()
 
 	dns, err := manager.GetDns(d.Id())
 	if err != nil {
-		if err.(*bcc.ApiError).Code() == 404 {
-			d.SetId("")
-			return nil
-		} else {
-			return diag.Errorf("[ERROR-046]: crash via getting Dns: %s", err)
+		return diag.Errorf("[ERROR-046]: crash via get Dns: %s", err)
+	}
+
+	if d.HasChange("tags") {
+		dns.Tags = unmarshalTagNames(d.Get("tags"))
+		needUpdate = true
+	}
+	if needUpdate {
+		if err = dns.Update(); err != nil {
+			return diag.Errorf("[ERROR-046]: crash via update dns %s", err)
 		}
+	}
+	return resourceDnsRead(ctx, d, meta)
+}
+
+func resourceDnsRead(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	manager := meta.(*CombinedConfig).Manager()
+
+	dns, err := manager.GetDns(d.Id())
+	if err != nil {
+		resourceReadCheck(d, err, "[ERROR-046]:")
 	}
 
 	fields := map[string]interface{}{
@@ -80,44 +96,25 @@ func resourceDnsRead(ctx context.Context, d *schema.ResourceData, meta interface
 	}
 
 	if err := setResourceDataFromMap(d, fields); err != nil {
-		return diag.Errorf("[ERROR-046]: crash via setting resource data: %s", err)
+		return diag.Errorf("[ERROR-046]: crash via set attrs: %s", err)
 	}
 
 	return nil
 }
 
-func resourceDnsDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceDnsDelete(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 	dns, err := manager.GetDns(d.Id())
 	if err != nil {
-		return diag.Errorf("[ERROR-046]: crash via getting Dns by 'id': %s", err)
+		return diag.Errorf("[ERROR-046]: crash via get Dns: %s", err)
 	}
 
 	err = dns.Delete()
 	if err != nil {
-		return diag.Errorf("[ERROR-046]: crash via deleting Dns: %s", err)
+		return diag.Errorf("[ERROR-046]: crash via delete Dns: %s", err)
 	}
 
 	return nil
-}
-
-func resourceDnsUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	needUpdate := false
-	manager := meta.(*CombinedConfig).Manager()
-	dns, err := manager.GetDns(d.Id())
-	if err != nil {
-		return diag.Errorf("[ERROR-046]: crash via getting Dns by 'id': %s", err)
-	}
-	if d.HasChange("tags") {
-		dns.Tags = unmarshalTagNames(d.Get("tags"))
-		needUpdate = true
-	}
-	if needUpdate {
-		if err = dns.Delete(); err != nil {
-			return diag.Errorf("[ERROR-014]: %s", err)
-		}
-	}
-	return resourceDnsRead(ctx, d, meta)
 }
 
 func resourceDnsImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
@@ -125,7 +122,7 @@ func resourceDnsImport(ctx context.Context, d *schema.ResourceData, meta interfa
 
 	dns, err := manager.GetDns(d.Id())
 	if err != nil {
-		return nil, fmt.Errorf("[ERROR-046]: crash via getting Dns: %s", err)
+		return nil, fmt.Errorf("[ERROR-046]: crash via get Dns: %s", err)
 	}
 
 	d.SetId(dns.ID)

@@ -12,7 +12,7 @@ import (
 func dataSourcePlatforms() *schema.Resource {
 	args := Defaults()
 	args.injectResultListPlatforms()
-	args.injectContextVdcById()
+	args.injectContextRequiredVdc()
 
 	return &schema.Resource{
 		ReadContext: dataSourcePlatformsRead,
@@ -22,33 +22,37 @@ func dataSourcePlatforms() *schema.Resource {
 
 func dataSourcePlatformsRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	targetVdc, err := GetVdcById(d, manager)
+	vdc, err := GetVdcById(d, manager)
 	if err != nil {
-		return diag.Errorf("Error getting vdc: %s", err)
+		return diag.Errorf("[ERROR-040] crash via getting vdc: %s", err)
 	}
 
-	platforms, err := manager.GetPlatforms(targetVdc.ID)
+	platformList, err := manager.GetPlatforms(vdc.ID)
 	if err != nil {
-		return diag.Errorf("Error retrieving platforms: %s", err)
+		return diag.Errorf("[ERROR-040] crash via retrieving platforms: %s", err)
 	}
 
-	flattenedRecords := make([]map[string]interface{}, len(platforms))
-	for i, platform := range platforms {
-		flattenedRecords[i] = map[string]interface{}{
+	platformMap := make([]map[string]interface{}, len(platformList))
+	for i, platform := range platformList {
+		platformMap[i] = map[string]interface{}{
 			"id":   platform.ID,
 			"name": platform.Name,
 		}
 	}
 
-	hash, err := hashstructure.Hash(platforms, hashstructure.FormatV2, nil)
+	hash, err := hashstructure.Hash(platformList, hashstructure.FormatV2, nil)
 	if err != nil {
-		diag.Errorf("unable to set `platforms` attribute: %s", err)
+		diag.Errorf("[ERROR-040] crash via calculate hash: %s", err)
 	}
 
-	d.SetId(fmt.Sprintf("platforms/%d", hash))
+	fields := map[string]interface{}{
+		"id":        fmt.Sprintf("platforms/%d", hash),
+		"vdc_id":    vdc.ID,
+		"platforms": platformMap,
+	}
 
-	if err := d.Set("platforms", flattenedRecords); err != nil {
-		return diag.Errorf("unable to set `platforms` attribute: %s", err)
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-040] crash via set attrs: %s", err)
 	}
 
 	return nil

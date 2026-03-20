@@ -13,13 +13,13 @@ import (
 
 func resourceFirewallTemplate() *schema.Resource {
 	args := Defaults()
-	args.injectContextVdcById()
-	args.injectCreateFirewallTemplate()
+	args.injectContextRequiredVdc()
+	args.injectContextResourceFirewallTemplate()
 
 	return &schema.Resource{
 		CreateContext: resourceFirewallTemplateCreate,
-		ReadContext:   resourceFirewallTemplateRead,
 		UpdateContext: resourceFirewallTemplateUpdate,
+		ReadContext:   resourceFirewallTemplateRead,
 		DeleteContext: resourceFirewallTemplateDelete,
 		Importer: &schema.ResourceImporter{
 			StateContext: resourceFirewallTemplateImport,
@@ -41,6 +41,7 @@ func resourceFirewallTemplateCreate(ctx context.Context, d *schema.ResourceData,
 
 	newFirewallTemplate := bcc.NewFirewallTemplate(d.Get("name").(string))
 	newFirewallTemplate.Tags = unmarshalTagNames(d.Get("tags"))
+	newFirewallTemplate.Description = d.Get("description").(string)
 
 	err = targetVdc.CreateFirewallTemplate(&newFirewallTemplate)
 	if err != nil {
@@ -48,34 +49,9 @@ func resourceFirewallTemplateCreate(ctx context.Context, d *schema.ResourceData,
 	}
 
 	d.SetId(newFirewallTemplate.ID)
-	log.Printf("[INFO-043]: firewallTemplate created, ID: %s", d.Id())
+	log.Printf("[INFO]: firewallTemplate created, ID: %s", d.Id())
 
 	return resourceFirewallTemplateRead(ctx, d, meta)
-}
-
-func resourceFirewallTemplateRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	manager := meta.(*CombinedConfig).Manager()
-	firewallTemplate, err := manager.GetFirewallTemplate(d.Id())
-	if err != nil {
-		if err.(*bcc.ApiError).Code() == 404 {
-			d.SetId("")
-			return nil
-		} else {
-			return diag.Errorf("[ERROR-043]: crash via getting Firewall Template by id=%s: %s", d.Id(), err)
-		}
-	}
-
-	fields := map[string]interface{}{
-		"name":   firewallTemplate.Name,
-		"tags":   marshalTagNames(firewallTemplate.Tags),
-		"vdc_id": firewallTemplate.Vdc.ID,
-	}
-
-	if err = setResourceDataFromMap(d, fields); err != nil {
-		return diag.Errorf("[ERROR-043]: crash via reading Firewall Template: %s", err)
-	}
-
-	return nil
 }
 
 func resourceFirewallTemplateUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
@@ -92,6 +68,9 @@ func resourceFirewallTemplateUpdate(ctx context.Context, d *schema.ResourceData,
 	if d.HasChange("tags") {
 		firewallTemplate.Tags = unmarshalTagNames(d.Get("tags"))
 	}
+	if d.HasChange("description") {
+		firewallTemplate.Description = d.Get("description").(string)
+	}
 	if err = firewallTemplate.UpdateFirewallTemplate(); err != nil {
 		return diag.Errorf("[ERROR-043]: crash via update: %s", err)
 	}
@@ -99,7 +78,29 @@ func resourceFirewallTemplateUpdate(ctx context.Context, d *schema.ResourceData,
 	return resourceFirewallTemplateRead(ctx, d, meta)
 }
 
-func resourceFirewallTemplateDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceFirewallTemplateRead(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	manager := meta.(*CombinedConfig).Manager()
+	firewallTemplate, err := manager.GetFirewallTemplate(d.Id())
+	if err != nil {
+		return resourceReadCheck(d, err, "[ERROR-043]:")
+	}
+
+	fields := map[string]interface{}{
+		"name":        firewallTemplate.Name,
+		"tags":        marshalTagNames(firewallTemplate.Tags),
+		"description": firewallTemplate.Description,
+		"rules_count": firewallTemplate.RulesCount,
+		"vdc_id":      firewallTemplate.Vdc.ID,
+	}
+
+	if err = setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-043]: crash via reading Firewall Template: %s", err)
+	}
+
+	return nil
+}
+
+func resourceFirewallTemplateDelete(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 	FirewallTemplate, err := manager.GetFirewallTemplate(d.Id())
 	if err != nil {
@@ -114,7 +115,7 @@ func resourceFirewallTemplateDelete(ctx context.Context, d *schema.ResourceData,
 	return nil
 }
 
-func resourceFirewallTemplateImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+func resourceFirewallTemplateImport(_ context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 	manager := meta.(*CombinedConfig).Manager()
 
 	firewallTemplate, err := manager.GetFirewallTemplate(d.Id())

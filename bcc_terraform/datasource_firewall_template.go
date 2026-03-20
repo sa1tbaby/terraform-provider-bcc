@@ -2,6 +2,7 @@ package bcc_terraform
 
 import (
 	"context"
+	"strings"
 
 	"github.com/basis-cloud/bcc-go/bcc"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -10,7 +11,8 @@ import (
 
 func dataSourceFirewallTemplate() *schema.Resource {
 	args := Defaults()
-	args.injectContextVdcById()
+	args.injectContextRequiredVdc()
+	args.injectContextDataFirewallTemplate()
 	args.injectContextGetFirewallTemplate()
 
 	return &schema.Resource{
@@ -21,37 +23,40 @@ func dataSourceFirewallTemplate() *schema.Resource {
 
 func dataSourceFirewallTemplateRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	targetVdc, err := GetVdcById(d, manager)
-	if err != nil {
-		return diag.Errorf("Error getting vdc: %s", err)
-	}
-
 	target, err := checkDatasourceNameOrId(d)
 	if err != nil {
-		return diag.Errorf("Error getting template: %s", err)
+		return diag.Errorf("[ERROR-019] crash via chose target: %s", err)
 	}
-	var targetFirewallTemplate *bcc.FirewallTemplate
-	if target == "id" {
-		targetFirewallTemplate, err = manager.GetFirewallTemplate(d.Get("id").(string))
+
+	var firewallTemplate *bcc.FirewallTemplate
+	if strings.EqualFold(target, "id") {
+		fwTmplId := d.Get("id").(string)
+		firewallTemplate, err = manager.GetFirewallTemplate(fwTmplId)
 		if err != nil {
-			return diag.Errorf("Error getting template: %s", err)
+			return diag.Errorf("[ERROR-019] crash via getting template by id=%s: %s", fwTmplId, err)
 		}
 	} else {
-		targetFirewallTemplate, err = GetFirewallTemplateByName(d, manager, targetVdc)
+		vdc, err := GetVdcById(d, manager)
 		if err != nil {
-			return diag.Errorf("Error getting template: %s", err)
+			return diag.Errorf("[ERROR-019] crash via getting vdc: %s", err)
+		}
+
+		firewallTemplate, err = GetFirewallTemplateByName(d, manager, vdc)
+		if err != nil {
+			return diag.Errorf("[ERROR-019] crash via getting template by name: %s", err)
 		}
 	}
 
-	flatten := map[string]interface{}{
-		"id":   targetFirewallTemplate.ID,
-		"name": targetFirewallTemplate.Name,
+	fields := map[string]interface{}{
+		"id":          firewallTemplate.ID,
+		"name":        firewallTemplate.Name,
+		"description": firewallTemplate.Description,
+		"rules_count": firewallTemplate.RulesCount,
+		"tags":        marshalTagNames(firewallTemplate.Tags),
 	}
 
-	if err := setResourceDataFromMap(d, flatten); err != nil {
-		return diag.FromErr(err)
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-019] crash via set attrs: %s", err)
 	}
-
-	d.SetId(targetFirewallTemplate.ID)
 	return nil
 }

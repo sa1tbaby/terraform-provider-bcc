@@ -2,6 +2,7 @@ package bcc_terraform
 
 import (
 	"context"
+	"strings"
 
 	"github.com/basis-cloud/bcc-go/bcc"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -10,7 +11,8 @@ import (
 
 func dataSourceDns() *schema.Resource {
 	args := Defaults()
-	args.injectContextProjectById()
+	args.injectContextRequiredProject()
+	args.injectContextDataDns()
 	args.injectContextGetDns()
 
 	return &schema.Resource{
@@ -24,31 +26,32 @@ func dataSourceDnsRead(ctx context.Context, d *schema.ResourceData, meta interfa
 
 	target, err := checkDatasourceNameOrId(d)
 	if err != nil {
-		return diag.Errorf("Error getting dns: %s", err)
+		return diag.Errorf("[ERROR-028] crash via chose the target for get: %s", err)
 	}
-	var targetDns *bcc.Dns
-	if target == "id" {
-		targetDns, err = manager.GetDns(d.Get("id").(string))
+	var dns *bcc.Dns
+	if strings.EqualFold(target, "id") {
+		dnsId := d.Get("id").(string)
+		dns, err = manager.GetDns(dnsId)
 		if err != nil {
-			return diag.Errorf("Error getting dns: %s", err)
+			return diag.Errorf("[ERROR-028] crash via getting dns by id=%s: %s", dnsId, err)
 		}
 	} else {
-		targetDns, err = GetDnsByName(d, manager)
+		dns, err = GetDnsByName(d, manager)
 		if err != nil {
-			return diag.Errorf("Error getting dns: %s", err)
+			return diag.Errorf("[ERROR-028] crash via getting dns by name: %s", err)
 		}
 	}
 
-	flatten := map[string]interface{}{
-		"id":         targetDns.ID,
-		"name":       targetDns.Name,
-		"project_id": targetDns.Project.ID,
+	fields := map[string]interface{}{
+		"id":         dns.ID,
+		"name":       dns.Name,
+		"tags":       marshalTagNames(dns.Tags),
+		"project_id": dns.Project.ID,
 	}
 
-	if err := setResourceDataFromMap(d, flatten); err != nil {
-		return diag.FromErr(err)
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-028] crash via set attrs: %s", err)
 	}
 
-	d.SetId(targetDns.ID)
 	return nil
 }

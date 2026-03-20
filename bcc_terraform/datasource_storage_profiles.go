@@ -11,7 +11,7 @@ import (
 
 func dataSourceStorageProfiles() *schema.Resource {
 	args := Defaults()
-	args.injectContextVdcById()
+	args.injectContextRequiredVdc()
 	args.injectResultListStorageProfile()
 
 	return &schema.Resource{
@@ -22,19 +22,20 @@ func dataSourceStorageProfiles() *schema.Resource {
 
 func dataSourceStorageProfilesRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	targetVdc, err := GetVdcById(d, manager)
+
+	vdc, err := GetVdcById(d, manager)
 	if err != nil {
-		return diag.Errorf("Error getting VDC: %s", err)
+		return diag.Errorf("[ERROR-013] crash via getting VDC: %s", err)
 	}
 
-	storageProfiles, err := targetVdc.GetStorageProfiles()
+	storageProfileList, err := vdc.GetStorageProfiles()
 	if err != nil {
-		return diag.Errorf("Error getting storage profiles")
+		return diag.Errorf("[ERROR-013] crash via getting storage profiles")
 	}
 
-	flattenedStorageProfiles := make([]map[string]interface{}, len(storageProfiles))
-	for i, storageProfile := range storageProfiles {
-		flattenedStorageProfiles[i] = map[string]interface{}{
+	storageProfileMap := make([]map[string]interface{}, len(storageProfileList))
+	for i, storageProfile := range storageProfileList {
+		storageProfileMap[i] = map[string]interface{}{
 			"id":            storageProfile.ID,
 			"name":          storageProfile.Name,
 			"max_disk_size": storageProfile.MaxDiskSize,
@@ -42,15 +43,19 @@ func dataSourceStorageProfilesRead(ctx context.Context, d *schema.ResourceData, 
 		}
 	}
 
-	hash, err := hashstructure.Hash(storageProfiles, hashstructure.FormatV2, nil)
+	hash, err := hashstructure.Hash(storageProfileList, hashstructure.FormatV2, nil)
 	if err != nil {
-		diag.Errorf("unable to set `storage_profiles` attribute: %s", err)
+		diag.Errorf("[ERROR-013] crash via calculate hash: %s", err)
 	}
 
-	d.SetId(fmt.Sprintf("storage_profiles/%d", hash))
+	fields := map[string]interface{}{
+		"id":               fmt.Sprintf("storage_profiles/%d", hash),
+		"vdc_id":           vdc.ID,
+		"storage_profiles": storageProfileMap,
+	}
 
-	if err := d.Set("storage_profiles", flattenedStorageProfiles); err != nil {
-		return diag.Errorf("unable to set `storage_profiles` attribute: %s", err)
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-013] crash via set attrs: %s", err)
 	}
 
 	return nil

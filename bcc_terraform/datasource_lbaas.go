@@ -2,6 +2,7 @@ package bcc_terraform
 
 import (
 	"context"
+	"strings"
 
 	"github.com/basis-cloud/bcc-go/bcc"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -10,8 +11,8 @@ import (
 
 func dataSourceLbaas() *schema.Resource {
 	args := Defaults()
-	args.injectContextVdcById()
-	args.injectResultLbaas()
+	args.injectContextRequiredVdc()
+	args.injectContextDataLbaas()
 	args.injectContextGetLbaas()
 
 	return &schema.Resource{
@@ -22,44 +23,57 @@ func dataSourceLbaas() *schema.Resource {
 
 func dataSourceLbaasRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	targetVdc, err := GetVdcById(d, manager)
-	if err != nil {
-		return diag.Errorf("Error getting vdc: %s", err)
-	}
 
 	target, err := checkDatasourceNameOrId(d)
 	if err != nil {
-		return diag.Errorf("Error getting Lbaas: %s", err)
+		return diag.Errorf("[ERROR-030] crash via chose target : %s", err)
 	}
-	var targetLbaas *bcc.LoadBalancer
-	if target == "id" {
-		targetLbaas, err = manager.GetLoadBalancer(d.Get("id").(string))
+
+	var lbaas *bcc.LoadBalancer
+	if strings.EqualFold(target, "id") {
+		lbaasId := d.Get("id").(string)
+		lbaas, err = manager.GetLoadBalancer(lbaasId)
 		if err != nil {
-			return diag.Errorf("Error getting Lbaas: %s", err)
+			return diag.Errorf("[ERROR-030] crash via getting Lbaas by id=%s: %s", lbaasId, err)
+		}
+	} else if strings.EqualFold(target, "name") {
+		vdc, err := GetVdcById(d, manager)
+		if err != nil {
+			return diag.Errorf("[ERROR-030] crash via getting vdc: %s", err)
+		}
+
+		lbaas, err = GetLbaasByName(d, manager, vdc)
+		if err != nil {
+			return diag.Errorf("[ERROR-030] crash via getting Lbaas: %s", err)
 		}
 	} else {
-		targetLbaas, err = GetLbaasByName(d, manager, targetVdc)
-		if err != nil {
-			return diag.Errorf("Error getting Lbaas: %s", err)
-		}
+		return diag.Errorf("[ERROR-030] for Lbaas must be specified id or name")
 	}
 
-	flatten := map[string]interface{}{
-		"id":   targetLbaas.ID,
-		"name": targetLbaas.Name,
+	lbaasPort := make([]interface{}, 1)
+	lbaasPort[0] = map[string]interface{}{
+		"ip_address": lbaas.Port.IpAddress,
+		"network_id": lbaas.Port.Network.ID,
 	}
 
-	if targetLbaas.Floating != nil {
-		flatten["floating"] = true
-		flatten["floating_ip"] = targetLbaas.Floating.IpAddress
-	} else {
-		flatten["floating"] = false
+	fields := map[string]interface{}{
+		"id":          lbaas.ID,
+		"name":        lbaas.Name,
+		"tags":        marshalTagNames(lbaas.Tags),
+		"port":        lbaasPort,
+		"vdc_id":      lbaas.Vdc.ID,
+		"floating":    false,
+		"floating_ip": "",
 	}
 
-	if err := setResourceDataFromMap(d, flatten); err != nil {
-		return diag.FromErr(err)
+	if lbaas.Floating != nil {
+		fields["floating"] = true
+		fields["floating_ip"] = lbaas.Floating.IpAddress
 	}
 
-	d.SetId(targetLbaas.ID)
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-030] crash via set attrs: %s", err)
+	}
+
 	return nil
 }

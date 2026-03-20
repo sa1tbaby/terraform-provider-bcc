@@ -13,9 +13,9 @@ import (
 
 func resourcePaasService() *schema.Resource {
 	return &schema.Resource{
-		ReadContext:   resourcePaasServiceRead,
 		CreateContext: resourcePaasServiceCreate,
 		UpdateContext: resourcePaasServiceUpdate,
+		ReadContext:   resourcePaasServiceRead,
 		DeleteContext: resourcePaasServiceDelete,
 		Importer: &schema.ResourceImporter{
 			StateContext: resourcePaasServiceImport,
@@ -49,44 +49,6 @@ func resourcePaasService() *schema.Resource {
 			},
 		},
 	}
-}
-
-func resourcePaasServiceRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (diagErr diag.Diagnostics) {
-	manager := meta.(*CombinedConfig).Manager()
-	manager = manager.WithContext(ctx)
-
-	err := ensureLocationCreated(d.Get("vdc_id").(string), manager)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	service, err := manager.GetPaasService(d.Id())
-	if err != nil {
-		if err.(*bcc.ApiError).Code() == 404 {
-			d.SetId("")
-			return nil
-		} else {
-			return diag.Errorf("Error getting Paas Service: %s", err)
-		}
-	}
-
-	inputsBytes, err := json.Marshal(service.Inputs)
-	if err != nil {
-		return diag.Errorf("Error marshalling Paas Service inputs: %s", err)
-	}
-
-	fields := map[string]interface{}{
-		"name":                service.Name,
-		"vdc_id":              service.Vdc.ID,
-		"paas_service_id":     service.PaasServiceID,
-		"paas_service_inputs": string(inputsBytes),
-	}
-
-	if err := setResourceDataFromMap(d, fields); err != nil {
-		return diag.FromErr(err)
-	}
-
-	return nil
 }
 
 func resourcePaasServiceCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
@@ -150,6 +112,44 @@ func resourcePaasServiceUpdate(ctx context.Context, d *schema.ResourceData, meta
 	return resourcePaasServiceRead(ctx, d, meta)
 }
 
+func resourcePaasServiceRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (diagErr diag.Diagnostics) {
+	manager := meta.(*CombinedConfig).Manager()
+	manager = manager.WithContext(ctx)
+
+	err := ensureLocationCreated(d.Get("vdc_id").(string), manager)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	service, err := manager.GetPaasService(d.Id())
+	if err != nil {
+		if err.(*bcc.ApiError).Code() == 404 {
+			d.SetId("")
+			return nil
+		} else {
+			return diag.Errorf("Error getting Paas Service: %s", err)
+		}
+	}
+
+	inputsBytes, err := json.Marshal(service.Inputs)
+	if err != nil {
+		return diag.Errorf("Error marshalling Paas Service inputs: %s", err)
+	}
+
+	fields := map[string]interface{}{
+		"name":                service.Name,
+		"vdc_id":              service.Vdc.ID,
+		"paas_service_id":     service.PaasServiceID,
+		"paas_service_inputs": string(inputsBytes),
+	}
+
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.FromErr(err)
+	}
+
+	return nil
+}
+
 func resourcePaasServiceDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 	manager = manager.WithContext(ctx)
@@ -185,28 +185,4 @@ func resourcePaasServiceImport(ctx context.Context, d *schema.ResourceData, meta
 	d.Set("vdc_id", service.Vdc.ID)
 
 	return []*schema.ResourceData{d}, nil
-}
-
-func ensureLocationCreated(vdcId string, manager *bcc.Manager) error {
-	vdc, err := manager.GetVdc(vdcId)
-	if err != nil {
-		return err
-	}
-	if vdc.Paas != nil {
-		return nil
-	}
-	err = manager.CreatePaasLocation(vdcId)
-	if err != nil {
-		return err
-	}
-	for {
-		vdc, err := manager.GetVdc(vdcId)
-		if err != nil {
-			return err
-		}
-		if vdc.Paas != nil && !vdc.Paas.Locked {
-			return nil
-		}
-		time.Sleep(time.Second)
-	}
 }

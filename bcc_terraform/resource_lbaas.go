@@ -12,13 +12,13 @@ import (
 
 func resourceLbaas() *schema.Resource {
 	args := Defaults()
-	args.injectContextVdcById()
-	args.injectCreateLbaas()
+	args.injectContextRequiredVdc()
+	args.injectContextResourceLbaas()
 
 	return &schema.Resource{
 		CreateContext: resourceLbaasCreate,
-		ReadContext:   resourceLbaasRead,
 		UpdateContext: resourceLbaasUpdate,
+		ReadContext:   resourceLbaasRead,
 		DeleteContext: resourceLbaasDelete,
 		Importer: &schema.ResourceImporter{
 			StateContext: resourceLbaasImport,
@@ -29,88 +29,56 @@ func resourceLbaas() *schema.Resource {
 
 func resourceLbaasCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
+	portPrefix := "port.0"
+	fields := struct {
+		name         string
+		port         map[string]interface{}
+		floating     bool
+		ipAddressStr string
+		floatingIp   *bcc.Port
+	}{
+		name:         d.Get("name").(string),
+		port:         d.Get("port.0").(map[string]interface{}),
+		floating:     d.Get("floating").(bool),
+		ipAddressStr: d.Get(MakePrefix(&portPrefix, "ip_address")).(string),
+		floatingIp:   nil,
+	}
+	if fields.floating {
+		fields.floatingIp = &bcc.Port{ID: "RANDOM_FIP"}
+	}
+	if fields.ipAddressStr == "" {
+		fields.ipAddressStr = "0.0.0.0"
+	}
 
 	vdc, err := GetVdcById(d, manager)
 	if err != nil {
 		return diag.Errorf("[ERROR-049]: crash via getting VDC: %s", err)
 	}
 
-	name := d.Get("name").(string)
-	port := d.Get("port.0").(map[string]interface{})
-	floating := d.Get("floating").(bool)
-	portPrefix := "port.0"
-	ipAddressStr := d.Get(MakePrefix(&portPrefix, "ip_address")).(string)
-
-	// create port
-	var floatingIp *bcc.Port
-	if floating {
-		floatingIp = &bcc.Port{ID: "RANDOM_FIP"}
-	}
-
-	network, err := manager.GetNetwork(port["network_id"].(string))
+	network, err := manager.GetNetwork(fields.port["network_id"].(string))
 	if err != nil {
-		return diag.Errorf("[ERROR-049]: crash via getting network by id=%s: %s", port["network_id"].(string), err)
+		return diag.Errorf("[ERROR-049]: crash via getting network by id=%s: %s", fields.port["network_id"].(string), err)
 	}
 	if err = network.WaitLock(); err != nil {
 		diag.Errorf("[ERROR-049]: crash via wait lock for network")
 	}
 
 	firewalls := make([]*bcc.FirewallTemplate, 0)
-	if ipAddressStr == "" {
-		ipAddressStr = "0.0.0.0"
-	}
+	_port := bcc.NewPort(network, firewalls, fields.ipAddressStr)
+	lbaas := bcc.NewLoadBalancer(fields.name, vdc, &_port, fields.floatingIp)
+	lbaas.Tags = unmarshalTagNames(d.Get("tags"))
 
-	_port := bcc.NewPort(network, firewalls, ipAddressStr)
-	newLbaas := bcc.NewLoadBalancer(name, vdc, &_port, floatingIp)
-	newLbaas.Tags = unmarshalTagNames(d.Get("tags"))
-
-	err = vdc.CreateLoadBalancer(&newLbaas)
-	if err != nil {
+	if err = vdc.CreateLoadBalancer(&lbaas); err != nil {
 		return diag.Errorf("[ERROR-049]: crash via creating Lbaas: %s", err)
 	}
-	if err = newLbaas.WaitLock(); err != nil {
+	if err = lbaas.WaitLock(); err != nil {
 		diag.Errorf("[ERROR-049]: crash via wait lock for lbaas")
 	}
 
-	d.SetId(newLbaas.ID)
+	d.SetId(lbaas.ID)
+	log.Printf("[INFO] Lbaas created, ID: %s", d.Id())
+
 	return resourceLbaasRead(ctx, d, meta)
-}
-
-func resourceLbaasRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	manager := meta.(*CombinedConfig).Manager()
-	lbaas, err := manager.GetLoadBalancer(d.Id())
-	if err != nil {
-		if err.(*bcc.ApiError).Code() == 404 {
-			d.SetId("")
-			return nil
-		} else {
-			return diag.Errorf("[ERROR-049]: crash via getting Lbaas by 'id'=%s: %s", d.Id(), err)
-		}
-	}
-
-	lbaasPort := make([]interface{}, 1)
-	lbaasPort[0] = map[string]interface{}{
-		"ip_address": lbaas.Port.IpAddress,
-		"network_id": lbaas.Port.Network.ID,
-	}
-
-	fields := map[string]interface{}{
-		"name":        lbaas.Name,
-		"floating":    lbaas.Floating != nil,
-		"floating_ip": "",
-		"port":        lbaasPort,
-		"vdc_id":      lbaas.Vdc.ID,
-		"tags":        marshalTagNames(lbaas.Tags),
-	}
-	if lbaas.Floating != nil {
-		fields["floating_ip"] = lbaas.Floating.IpAddress
-	}
-
-	if err = setResourceDataFromMap(d, fields); err != nil {
-		return diag.FromErr(err)
-	}
-
-	return nil
 }
 
 func resourceLbaasUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
@@ -119,6 +87,7 @@ func resourceLbaasUpdate(ctx context.Context, d *schema.ResourceData, meta inter
 	if err != nil {
 		return diag.Errorf("[ERROR-049]: crash via getting Lbaas by 'id'=%s: %s", d.Id(), err)
 	}
+
 	if d.HasChange("name") {
 		lbaas.Name = d.Get("name").(string)
 	}
@@ -128,7 +97,6 @@ func resourceLbaasUpdate(ctx context.Context, d *schema.ResourceData, meta inter
 		} else {
 			lbaas.Floating = &bcc.Port{ID: "RANDOM_FIP"}
 		}
-		d.Set("floating", lbaas.Floating != nil)
 	}
 	if d.HasChange("tags") {
 		lbaas.Tags = unmarshalTagNames(d.Get("tags"))
@@ -153,7 +121,40 @@ func resourceLbaasUpdate(ctx context.Context, d *schema.ResourceData, meta inter
 	return resourceLbaasRead(ctx, d, meta)
 }
 
-func resourceLbaasDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceLbaasRead(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	manager := meta.(*CombinedConfig).Manager()
+	lbaas, err := manager.GetLoadBalancer(d.Id())
+	if err != nil {
+		return resourceReadCheck(d, err, "[ERROR-049]:")
+	}
+
+	lbaasPort := make([]interface{}, 1)
+	lbaasPort[0] = map[string]interface{}{
+		"ip_address": lbaas.Port.IpAddress,
+		"network_id": lbaas.Port.Network.ID,
+	}
+
+	fields := map[string]interface{}{
+		"name":        lbaas.Name,
+		"floating":    false,
+		"floating_ip": "",
+		"port":        lbaasPort,
+		"vdc_id":      lbaas.Vdc.ID,
+		"tags":        marshalTagNames(lbaas.Tags),
+	}
+	if lbaas.Floating != nil {
+		fields["floating"] = true
+		fields["floating_ip"] = lbaas.Floating.IpAddress
+	}
+
+	if err = setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-049]: crash via set attrs: %s", err)
+	}
+
+	return nil
+}
+
+func resourceLbaasDelete(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 
 	lbaasId := d.Id()
@@ -167,22 +168,14 @@ func resourceLbaasDelete(ctx context.Context, d *schema.ResourceData, meta inter
 	}
 	lbaas.WaitLock()
 
-	d.SetId("")
-	log.Printf("[INFO-049] Lbaas deleted, ID: %s", lbaasId)
-
 	return nil
 }
 
-func resourceLbaasImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+func resourceLbaasImport(_ context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 	manager := meta.(*CombinedConfig).Manager()
 	lbaas, err := manager.GetLoadBalancer(d.Id())
 	if err != nil {
-		if err.(*bcc.ApiError).Code() == 404 {
-			d.SetId("")
-			return nil, fmt.Errorf("[ERROR-049]: Lbaas not found")
-		} else {
-			return nil, fmt.Errorf("[ERROR-049]: crash via getting Lbaas by 'id'=%s: %s", d.Id(), err)
-		}
+		return nil, fmt.Errorf("[ERROR-049]: crash via getting Lbaas by 'id'=%s: %s", d.Id(), err)
 	}
 
 	d.SetId(lbaas.ID)

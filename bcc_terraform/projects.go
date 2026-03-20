@@ -22,7 +22,7 @@ func (args *Arguments) injectContextGetProject() {
 	})
 }
 
-func (args *Arguments) injectContextProjectById() {
+func (args *Arguments) injectContextRequiredProject() {
 	args.merge(Arguments{
 		"project_id": {
 			Type:        schema.TypeString,
@@ -33,7 +33,7 @@ func (args *Arguments) injectContextProjectById() {
 	})
 }
 
-func (args *Arguments) injectContextProjectByIdOptional() {
+func (args *Arguments) injectContextOptionalProject() {
 	args.merge(Arguments{
 		"project_id": {
 			Type:        schema.TypeString,
@@ -43,7 +43,7 @@ func (args *Arguments) injectContextProjectByIdOptional() {
 	})
 }
 
-func (args *Arguments) injectCreateProject() {
+func (args *Arguments) injectContextResourceProject() {
 	args.merge(Arguments{
 		"name": {
 			Type:     schema.TypeString,
@@ -58,7 +58,7 @@ func (args *Arguments) injectCreateProject() {
 	})
 }
 
-func (args *Arguments) injectResultProject() {
+func (args *Arguments) injectContextDataProject() {
 	args.merge(Arguments{
 		"id": {
 			Type:        schema.TypeString,
@@ -70,12 +70,13 @@ func (args *Arguments) injectResultProject() {
 			Computed:    true,
 			Description: "Project name",
 		},
+		"tags": newTagNamesDataSchema("tags of the router"),
 	})
 }
 
-func (args *Arguments) injectResultListProject() {
+func (args *Arguments) injectContextDataProjectList() {
 	s := Defaults()
-	s.injectResultProject()
+	s.injectContextDataProject()
 
 	args.merge(Arguments{
 		"projects": {

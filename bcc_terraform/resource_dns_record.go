@@ -14,13 +14,13 @@ import (
 
 func resourceDnsRecord() *schema.Resource {
 	args := Defaults()
-	args.injectContextDnsById()
-	args.injectCreateDnsRecord()
+	args.injectContextRequiredDns()
+	args.injectContextResourceDnsRecord()
 
 	return &schema.Resource{
 		CreateContext: resourceDnsRecordCreate,
-		ReadContext:   resourceDnsRecordRead,
 		UpdateContext: resourceDnsRecordUpdate,
+		ReadContext:   resourceDnsRecordRead,
 		DeleteContext: resourceDnsRecordDelete,
 		Importer: &schema.ResourceImporter{
 			StateContext: resourceDnsRecordImport,
@@ -36,32 +36,47 @@ func resourceDnsRecord() *schema.Resource {
 func resourceDnsRecordCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 
-	dnsId := d.Get("dns_id").(string)
-	dns, err := manager.GetDns(dnsId)
-	if err != nil {
-		return diag.Errorf("vdc_id: Error getting Dns: %s", err)
-	}
-
-	host := d.Get("host").(string)
-	if !strings.HasSuffix(host, dns.Name) {
-		return diag.Errorf("host: must be ending by '%s'", dns.Name)
-	}
-
-	newDnsRecord := bcc.NewDnsRecord(
+	fields := struct {
+		DnsId    string
+		Data     string
+		Flag     int
+		Host     string
+		Port     int
+		Priority int
+		Tag      string
+		Ttl      int
+		Type     string
+		Weight   int
+	}{
+		d.Get("dns_id").(string),
 		d.Get("data").(string),
 		d.Get("flag").(int),
-		host,
+		d.Get("host").(string),
 		d.Get("port").(int),
 		d.Get("priority").(int),
 		d.Get("tag").(string),
 		d.Get("ttl").(int),
 		d.Get("type").(string),
 		d.Get("weight").(int),
+	}
+
+	dns, err := manager.GetDns(fields.DnsId)
+	if err != nil {
+		return diag.Errorf("[ERROR-047] crash via get dns: %s", err)
+	}
+
+	if !strings.HasSuffix(fields.Host, dns.Name) {
+		return diag.Errorf("[ERROR-047] host must be ending by '%s'", dns.Name)
+	}
+
+	newDnsRecord := bcc.NewDnsRecord(
+		fields.Data, fields.Flag, fields.Host, fields.Port, fields.Priority,
+		fields.Tag, fields.Ttl, fields.Type, fields.Weight,
 	)
 
 	err = dns.CreateDnsRecord(&newDnsRecord)
 	if err != nil {
-		return diag.Errorf("Error creating Dns record: %s", err)
+		return diag.Errorf("[ERROR-047] crash via creating Dns record: %s", err)
 	}
 
 	d.SetId(newDnsRecord.ID)
@@ -73,43 +88,67 @@ func resourceDnsRecordCreate(ctx context.Context, d *schema.ResourceData, meta i
 func resourceDnsRecordUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 
-	dnsId := d.Get("dns_id").(string)
-	dns, err := manager.GetDns(dnsId)
-
-	if err != nil {
-		return diag.Errorf("id: Error getting Dns: %s", err)
+	fields := struct {
+		ID       string
+		dnsId    string
+		Data     string
+		Flag     int
+		Host     string
+		Port     int
+		Priority int
+		Tag      string
+		Ttl      int
+		Type     string
+		Weight   int
+	}{
+		ID:       d.Id(),
+		dnsId:    d.Get("dns_id").(string),
+		Data:     d.Get("data").(string),
+		Flag:     d.Get("flag").(int),
+		Host:     d.Get("host").(string),
+		Port:     d.Get("port").(int),
+		Priority: d.Get("priority").(int),
+		Tag:      d.Get("tag").(string),
+		Ttl:      d.Get("ttl").(int),
+		Type:     d.Get("type").(string),
+		Weight:   d.Get("weight").(int),
 	}
-	dnsRecord, err := dns.GetDnsRecord(d.Id())
+
+	dns, err := manager.GetDns(fields.dnsId)
 	if err != nil {
-		return diag.Errorf("id: Error getting Dns record: %s", err)
+		return diag.Errorf("[ERROR-047] crash via getting Dns: %s", err)
+	}
+	dnsRecord, err := dns.GetDnsRecord(fields.ID)
+	if err != nil {
+		return diag.Errorf("[ERROR-047] crash via getting Dns record: %s", err)
 	}
 
 	if d.HasChange("data") {
-		dnsRecord.Data = d.Get("data").(string)
+		dnsRecord.Data = fields.Data
 	}
 	if d.HasChange("host") {
-		dnsRecord.Host = d.Get("host").(string)
+		dnsRecord.Host = fields.Host
 	}
 	if d.HasChange("ttl") {
-		dnsRecord.Ttl = d.Get("ttl").(int)
+		dnsRecord.Ttl = fields.Ttl
 	}
 	if d.HasChange("type") {
-		dnsRecord.Type = d.Get("type").(string)
+		dnsRecord.Type = fields.Type
 	}
 	if d.HasChange("weight") {
-		dnsRecord.Weight = d.Get("weight").(int)
+		dnsRecord.Weight = fields.Weight
 	}
 	if d.HasChange("flag") {
-		dnsRecord.Flag = d.Get("flag").(int)
+		dnsRecord.Flag = fields.Flag
 	}
 	if d.HasChange("tag") {
-		dnsRecord.Tag = d.Get("tag").(string)
+		dnsRecord.Tag = fields.Tag
 	}
 	if d.HasChange("priority") {
-		dnsRecord.Priority = d.Get("priority").(int)
+		dnsRecord.Priority = fields.Priority
 	}
 	if d.HasChange("port") {
-		dnsRecord.Port = d.Get("port").(int)
+		dnsRecord.Port = fields.Port
 	}
 
 	if err = dnsRecord.Update(); err != nil {
@@ -129,7 +168,7 @@ func resourceDnsRecordRead(ctx context.Context, d *schema.ResourceData, meta int
 			d.SetId("")
 			return nil
 		} else {
-			return diag.Errorf("id: Error getting Dns: %s", err)
+			return diag.Errorf("[ERROR-047] crash via get dns: %s", err)
 		}
 	}
 
@@ -139,7 +178,7 @@ func resourceDnsRecordRead(ctx context.Context, d *schema.ResourceData, meta int
 			d.SetId("")
 			return nil
 		} else {
-			return diag.Errorf("id: Error getting Dns record: %s", err)
+			return diag.Errorf("[ERROR-047] crash via get Dns record: %s", err)
 		}
 	}
 
@@ -157,7 +196,7 @@ func resourceDnsRecordRead(ctx context.Context, d *schema.ResourceData, meta int
 	}
 
 	if err := setResourceDataFromMap(d, fields); err != nil {
-		return diag.FromErr(err)
+		return diag.Errorf("[ERROR-047] crash via set attrs: %s", err)
 	}
 
 	return nil
@@ -168,16 +207,16 @@ func resourceDnsRecordDelete(ctx context.Context, d *schema.ResourceData, meta i
 	dnsId := d.Get("dns_id").(string)
 	dns, err := manager.GetDns(dnsId)
 	if err != nil {
-		return diag.Errorf("id: Error getting Dns: %s", err)
+		return diag.Errorf("[ERROR-047] crash via get Dns: %s", err)
 	}
 	dnsRecord, err := dns.GetDnsRecord(d.Id())
 	if err != nil {
-		return diag.Errorf("id: Error getting Dns record: %s", err)
+		return diag.Errorf("[ERROR-047] crash via get Dns record: %s", err)
 	}
 
 	err = dnsRecord.Delete()
 	if err != nil {
-		return diag.Errorf("Error deleting Dns: %s", err)
+		return diag.Errorf("[ERROR-047] crash via delete Dns: %s", err)
 	}
 
 	return nil
@@ -191,19 +230,18 @@ func resourceDnsRecordImport(ctx context.Context, d *schema.ResourceData, meta i
 
 	dns, err := manager.GetDns(ids[0])
 	if err != nil {
-		d.SetId("")
-		return nil, fmt.Errorf("id: Error getting Dns: %s", err)
+		return nil, fmt.Errorf("[ERROR-047] crash via get Dns: %s", err)
 	}
 
 	dnsRecord, err := dns.GetDnsRecord(ids[1])
 	if err != nil {
 		d.SetId("")
-		return nil, fmt.Errorf("id: Error getting Dns record: %s", err)
+		return nil, fmt.Errorf("[ERROR-047] crash via get Dns record: %s", err)
 	}
 
 	d.SetId(dnsRecord.ID)
 	if err := d.Set("dns_id", dns.ID); err != nil {
-		return nil, fmt.Errorf("error setting 'dns_id': %s", err)
+		return nil, fmt.Errorf("[ERROR-047] crash via set 'dns_id': %s", err)
 	}
 
 	return []*schema.ResourceData{d}, nil

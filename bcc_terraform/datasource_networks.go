@@ -11,8 +11,8 @@ import (
 
 func dataSourceNetworks() *schema.Resource {
 	args := Defaults()
-	args.injectContextVdcById()
-	args.injectResultListNetwork()
+	args.injectContextRequiredVdc()
+	args.injectContextDataNetworkList()
 
 	return &schema.Resource{
 		ReadContext: dataSourceNetworksRead,
@@ -22,31 +22,31 @@ func dataSourceNetworks() *schema.Resource {
 
 func dataSourceNetworksRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	targetVdc, err := GetVdcById(d, manager)
+	vdc, err := GetVdcById(d, manager)
 	if err != nil {
-		return diag.Errorf("Error getting vdc: %s", err)
+		return diag.Errorf("[ERROR-011] crash via getting vdc: %s", err)
 	}
 
-	allNetworks, err := targetVdc.GetNetworks()
+	networkList, err := vdc.GetNetworks()
 	if err != nil {
-		return diag.Errorf("Error retrieving networks: %s", err)
+		return diag.Errorf("[ERROR-011] crash via retrieving networks: %s", err)
 	}
 
-	flattenedRecords := make([]map[string]interface{}, len(allNetworks))
-	for i, network := range allNetworks {
-		allSubnets, err := network.GetSubnets()
+	networkMap := make([]map[string]interface{}, len(networkList))
+	for i, network := range networkList {
+		subnets, err := network.GetSubnets()
 		if err != nil {
-			return diag.Errorf("Error getting subnets")
+			return diag.Errorf("[ERROR-011] crash via getting subnets")
 		}
 
-		flattenRecords2 := make([]map[string]interface{}, len(allSubnets))
-		for i2, subnet := range allSubnets {
+		subnetMap := make([]map[string]interface{}, len(subnets))
+		for i2, subnet := range subnets {
 			dnsStrings := make([]string, len(subnet.DnsServers))
 			for i3, dns := range subnet.DnsServers {
 				dnsStrings[i3] = dns.DNSServer
 			}
 
-			flattenRecords2[i2] = map[string]interface{}{
+			subnetMap[i2] = map[string]interface{}{
 				"id":       subnet.ID,
 				"cidr":     subnet.CIDR,
 				"dhcp":     subnet.IsDHCP,
@@ -57,25 +57,29 @@ func dataSourceNetworksRead(ctx context.Context, d *schema.ResourceData, meta in
 			}
 		}
 
-		flattenedRecords[i] = map[string]interface{}{
-			"id":      network.ID,
-			"name":    network.Name,
-			"mtu":     network.Mtu,
-			"subnets": flattenRecords2,
+		networkMap[i] = map[string]interface{}{
+			"id":       network.ID,
+			"name":     network.Name,
+			"mtu":      network.Mtu,
+			"subnets":  subnetMap,
+			"external": network.External,
+			"tags":     marshalTagNames(network.Tags),
 		}
 	}
 
-	hash, err := hashstructure.Hash(allNetworks, hashstructure.FormatV2, nil)
+	hash, err := hashstructure.Hash(networkList, hashstructure.FormatV2, nil)
 	if err != nil {
-		diag.Errorf("unable to set `networks` attribute: %s", err)
+		diag.Errorf("[ERROR-011] crash via calculate hash: %s", err)
 	}
 
-	d.SetId(fmt.Sprintf("networks/%d", hash))
-	// d.Set("vdc_id", nil)
-	// d.Set("vdc_name", nil)
+	fields := map[string]interface{}{
+		"id":       fmt.Sprintf("networks/%d", hash),
+		"vdc_id":   vdc.ID,
+		"networks": networkMap,
+	}
 
-	if err := d.Set("networks", flattenedRecords); err != nil {
-		return diag.Errorf("unable to set `networks` attribute: %s", err)
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-011] crash via set attrs: %s", err)
 	}
 
 	return nil

@@ -10,9 +10,9 @@ import (
 
 func dataSourceStorageProfile() *schema.Resource {
 	args := Defaults()
+	args.injectContextRequiredVdc()
 	args.injectResultStorageProfile()
-	args.injectContextVdcById()
-	args.injectContextGetStorageProfile() // override name
+	args.injectContextGetStorageProfile()
 
 	return &schema.Resource{
 		ReadContext: dataSourceStorageProfileRead,
@@ -22,39 +22,41 @@ func dataSourceStorageProfile() *schema.Resource {
 
 func dataSourceStorageProfileRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	targetVdc, err := GetVdcById(d, manager)
+
+	vdc, err := GetVdcById(d, manager)
 	if err != nil {
-		return diag.Errorf("Error getting vdc: %s", err)
+		return diag.Errorf("[ERROR-012] crash via getting vdc: %s", err)
 	}
 
 	target, err := checkDatasourceNameOrId(d)
 	if err != nil {
-		return diag.Errorf("Error getting storage profile: %s", err)
+		return diag.Errorf("[ERROR-012] crash via getting chose target: %s", err)
 	}
-	var targetStorageProfile *bcc.StorageProfile
+
+	var storageProfile *bcc.StorageProfile
 	if target == "id" {
-		targetStorageProfile, err = targetVdc.GetStorageProfile(d.Get("id").(string))
+		storageProfileId := d.Get("id").(string)
+		storageProfile, err = vdc.GetStorageProfile(storageProfileId)
 		if err != nil {
-			return diag.Errorf("Error getting storage profile: %s", err)
+			return diag.Errorf("[ERROR-012] crash via getting storage profile by id: %s", err)
 		}
 	} else {
-		targetStorageProfile, err = GetStorageProfileByName(d, manager, targetVdc)
+		storageProfile, err = GetStorageProfileByName(d, manager, vdc)
 		if err != nil {
-			return diag.Errorf("Error getting storage profile: %s", err)
+			return diag.Errorf("[ERROR-012] crash via getting storage profile by name: %s", err)
 		}
 	}
 
-	flatten := map[string]interface{}{
-		"id":            targetStorageProfile.ID,
-		"name":          targetStorageProfile.Name,
-		"max_disk_size": targetStorageProfile.MaxDiskSize,
-		"enabled":       targetStorageProfile.Enabled,
+	fields := map[string]interface{}{
+		"id":            storageProfile.ID,
+		"name":          storageProfile.Name,
+		"max_disk_size": storageProfile.MaxDiskSize,
+		"enabled":       storageProfile.Enabled,
 	}
 
-	if err := setResourceDataFromMap(d, flatten); err != nil {
-		return diag.FromErr(err)
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-012] crash via set attrs: %s", err)
 	}
 
-	d.SetId(targetStorageProfile.ID)
 	return nil
 }

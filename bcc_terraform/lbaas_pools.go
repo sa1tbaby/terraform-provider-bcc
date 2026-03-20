@@ -22,7 +22,7 @@ func (args *Arguments) injectContextGetLbaasPool() {
 	})
 }
 
-func (args *Arguments) injectCreateLbaasPool() {
+func (args *Arguments) injectContextResourceLbaasPool() {
 	poolMembers := Defaults()
 	poolMembers.injectLbaasPoolMembers()
 
@@ -73,7 +73,7 @@ func (args *Arguments) injectCreateLbaasPool() {
 	})
 }
 
-func (args *Arguments) injectResultLbaasPool() {
+func (args *Arguments) injectCcontextDataLbaasPool() {
 	args.merge(Arguments{
 		"id": {
 			Type:        schema.TypeString,

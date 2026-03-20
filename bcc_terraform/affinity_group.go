@@ -7,7 +7,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
-func (args *Arguments) injectCreateAffinityGroup() {
+func (args *Arguments) injectContextResourceAffinityGroup() {
 	args.merge(Arguments{
 		"name": {
 			Type:     schema.TypeString,
@@ -35,17 +35,11 @@ func (args *Arguments) injectCreateAffinityGroup() {
 					"soft-anti-affinity": true,
 				}
 				if !validValues[v] {
-					errs = append(errs, fmt.Errorf("%q must be one of 'soft-affinity' or 'strong-affinity'", key))
+					errs = append(errs, fmt.Errorf("%q must be one of 'soft-affinity' or 'soft-anti-affinity'", key))
 				}
 				return
 			},
-			Description: "The affinity type. Can be either 'soft-affinity' or 'strong-affinity'.",
-		},
-		"reboot": {
-			Type:        schema.TypeBool,
-			Optional:    true,
-			Default:     false,
-			Description: "Whether to reboot the affinity group",
+			Description: "The affinity type. Can be either 'soft-affinity' or 'soft-anti-affinity'.",
 		},
 		"vms": {
 			Type:        schema.TypeList,
@@ -86,7 +80,7 @@ func (args *Arguments) injectContextGetAffinityGroup() {
 	})
 }
 
-func (args *Arguments) injectResultAffinityGroup() {
+func (args *Arguments) injectContextDataAffinityGroup() {
 	args.merge(Arguments{
 		"id": {
 			Type:        schema.TypeString,
@@ -107,11 +101,6 @@ func (args *Arguments) injectResultAffinityGroup() {
 			Type:        schema.TypeString,
 			Computed:    true,
 			Description: "affinity group policy",
-		},
-		"reboot": {
-			Type:        schema.TypeBool,
-			Computed:    true,
-			Description: "Whether to reboot the affinity group",
 		},
 		"vms": {
 			Type:        schema.TypeList,
@@ -136,9 +125,9 @@ func (args *Arguments) injectResultAffinityGroup() {
 
 }
 
-func (args *Arguments) injectResultListAffinityGroup() {
+func (args *Arguments) injectContextDataListAffinityGroup() {
 	s := Defaults()
-	s.injectResultAffinityGroup()
+	s.injectContextDataAffinityGroup()
 
 	args.merge(Arguments{
 		"affinity_groups": {

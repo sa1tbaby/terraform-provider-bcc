@@ -10,9 +10,9 @@ import (
 
 func dataSourceS3Storage() *schema.Resource {
 	args := Defaults()
-	args.injectContextProjectById()
-	args.injectResultS3Storage()
-	args.injectContextGetS3Storage()
+	args.injectContextRequiredProject()
+	args.injectContextDataS3()
+	args.injectContextGetS3()
 
 	return &schema.Resource{
 		ReadContext: dataSourceS3StorageRead,
@@ -25,34 +25,36 @@ func dataSourceS3StorageRead(ctx context.Context, d *schema.ResourceData, meta i
 
 	target, err := checkDatasourceNameOrId(d)
 	if err != nil {
-		return diag.Errorf("Error getting s3 storage: %s", err)
+		return diag.Errorf("[ERRORR-032] crash via getting s3 storage: %s", err)
 	}
-	var s3_storage *bcc.S3Storage
+
+	var s3Storage *bcc.S3Storage
 	if target == "id" {
-		s3_storage, err = manager.GetS3Storage(d.Get("id").(string))
+		s3StorageId := d.Get("id").(string)
+		s3Storage, err = manager.GetS3Storage(s3StorageId)
 		if err != nil {
-			return diag.Errorf("Error getting storage: %s", err)
+			return diag.Errorf("[ERRORR-032] crash via getting storage by id: %s", err)
 		}
 	} else {
-		s3_storage, err = GetS3ByName(d, manager)
+		s3Storage, err = GetS3ByName(d, manager)
 		if err != nil {
-			return diag.Errorf("Error getting storage: %s", err)
+			return diag.Errorf("[ERRORR-032] crash via getting storage by name: %s", err)
 		}
 	}
 
-	flatten := map[string]interface{}{
-		"id":              s3_storage.ID,
-		"name":            s3_storage.Name,
-		"backend":         s3_storage.Backend,
-		"client_endpoint": s3_storage.ClientEndpoint,
-		"access_key":      s3_storage.AccessKey,
-		"secret_key":      s3_storage.SecretKey,
+	fields := map[string]interface{}{
+		"id":              s3Storage.ID,
+		"name":            s3Storage.Name,
+		"backend":         s3Storage.Backend,
+		"client_endpoint": s3Storage.ClientEndpoint,
+		"access_key":      s3Storage.AccessKey,
+		"secret_key":      s3Storage.SecretKey,
+		"tags":            marshalTagNames(s3Storage.Tags),
 	}
 
-	if err := setResourceDataFromMap(d, flatten); err != nil {
-		return diag.FromErr(err)
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERRORR-032] crash via set attrs: %s", err)
 	}
 
-	d.SetId(s3_storage.ID)
 	return nil
 }

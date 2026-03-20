@@ -13,13 +13,13 @@ import (
 
 func resourceS3Storage() *schema.Resource {
 	args := Defaults()
-	args.injectContextProjectById()
-	args.injectCreateS3Storage()
+	args.injectContextRequiredProject()
+	args.injectContextResourceS3()
 
 	return &schema.Resource{
 		CreateContext: resourceS3StorageCreate,
-		ReadContext:   resourceS3StorageRead,
 		UpdateContext: resourceS3StorageUpdate,
+		ReadContext:   resourceS3StorageRead,
 		DeleteContext: resourceS3StorageDelete,
 		Importer: &schema.ResourceImporter{
 			StateContext: resourceS3StorageImport,
@@ -85,7 +85,7 @@ func resourceS3StorageUpdate(ctx context.Context, d *schema.ResourceData, meta i
 	return resourceS3StorageRead(ctx, d, meta)
 }
 
-func resourceS3StorageRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceS3StorageRead(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 	s3Storage, err := manager.GetS3Storage(d.Id())
 	if err != nil {
@@ -114,7 +114,7 @@ func resourceS3StorageRead(ctx context.Context, d *schema.ResourceData, meta int
 	return nil
 }
 
-func resourceS3StorageDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceS3StorageDelete(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 	s3, err := manager.GetS3Storage(d.Id())
 	if err != nil {
@@ -132,7 +132,7 @@ func resourceS3StorageDelete(ctx context.Context, d *schema.ResourceData, meta i
 	return nil
 }
 
-func resourceS3StorageImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+func resourceS3StorageImport(_ context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 	manager := meta.(*CombinedConfig).Manager()
 	S3Storage, err := manager.GetS3Storage(d.Id())
 	if err != nil {

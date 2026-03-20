@@ -5,7 +5,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
-func (args *Arguments) injectCreateVdc() {
+func (args *Arguments) injectContextResourceVdc() {
 	args.merge(Arguments{
 		"project_id": {
 			Type:        schema.TypeString,
@@ -86,7 +86,7 @@ func (args *Arguments) injectCreateVdc() {
 	})
 }
 
-func (args *Arguments) injectContextVdcById() {
+func (args *Arguments) injectContextRequiredVdc() {
 	args.merge(Arguments{
 		"vdc_id": {
 			Type:        schema.TypeString,
@@ -100,7 +100,7 @@ func (args *Arguments) injectContextVdcById() {
 	})
 }
 
-func (args *Arguments) injectContextOptionalVdcById() {
+func (args *Arguments) injectContextOptionalVdc() {
 	args.merge(Arguments{
 		"vdc_id": {
 			Type:     schema.TypeString,
@@ -114,7 +114,7 @@ func (args *Arguments) injectContextOptionalVdcById() {
 	})
 }
 
-func (args *Arguments) injectContextVdcByIdForData() {
+func (args *Arguments) injectContextRequiredVdcForData() {
 	args.merge(Arguments{
 		"vdc_id": {
 			Type:        schema.TypeString,
@@ -141,7 +141,7 @@ func (args *Arguments) injectContextGetVdc() {
 	})
 }
 
-func (args *Arguments) injectResultVdc() {
+func (args *Arguments) injectContextDataVdc() {
 	args.merge(Arguments{
 		"id": {
 			Type:        schema.TypeString,
@@ -163,12 +163,73 @@ func (args *Arguments) injectResultVdc() {
 			Computed:    true,
 			Description: "type of the Hypervisor",
 		},
+		"tags": newTagNamesDataSchema("tags of the VDC"),
+		"default_network_id": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "id of the default VDC Network",
+		},
+		"default_network_name": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "name of the default VDC Network",
+		},
+		"default_network_mtu": {
+			Type:        schema.TypeInt,
+			Computed:    true,
+			Description: "mtu of the default vdc Network",
+		},
+		"default_network_subnets": {
+			Type:        schema.TypeList,
+			Computed:    true,
+			Description: "list of subnets",
+			Elem: &schema.Resource{
+				Schema: map[string]*schema.Schema{
+					"id": {
+						Type:        schema.TypeString,
+						Computed:    true,
+						Description: "id of the Subnet",
+					},
+					"cidr": {
+						Type:        schema.TypeString,
+						Computed:    true,
+						Description: "cidr of the Subnet",
+					},
+					"gateway": {
+						Type:        schema.TypeString,
+						Computed:    true,
+						Description: "gateway of the Subnet",
+					},
+					"start_ip": {
+						Type:        schema.TypeString,
+						Computed:    true,
+						Description: "pool start ip of the Subnet",
+					},
+					"end_ip": {
+						Type:        schema.TypeString,
+						Computed:    true,
+						Description: "pool end ip of the Subnet",
+					},
+					"dhcp": {
+						Type:        schema.TypeBool,
+						Computed:    true,
+						Description: "enable dhcp service of the Subnet",
+					},
+					"dns": {
+						Type:        schema.TypeList,
+						Computed:    true,
+						Elem:        &schema.Schema{Type: schema.TypeString},
+						Description: "dns servers list",
+					},
+				},
+			},
+		},
 	})
 }
 
-func (args *Arguments) injectResultListVdc() {
+func (args *Arguments) injectContextDataListVdc() {
 	s := Defaults()
-	s.injectResultVdc()
+	s.injectContextDataVdc()
 
 	args.merge(Arguments{
 		"vdcs": {

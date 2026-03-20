@@ -2,6 +2,7 @@ package bcc_terraform
 
 import (
 	"context"
+	"strings"
 
 	"github.com/basis-cloud/bcc-go/bcc"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -10,8 +11,8 @@ import (
 
 func dataSourceAffinityGroup() *schema.Resource {
 	args := Defaults()
-	args.injectResultAffinityGroup()
-	args.injectContextVdcByIdForData()
+	args.injectContextDataAffinityGroup()
+	args.injectContextRequiredVdcForData()
 	args.injectContextGetAffinityGroup()
 
 	return &schema.Resource{
@@ -24,45 +25,44 @@ func dataSourceAffinityGroupRead(ctx context.Context, d *schema.ResourceData, me
 	manager := meta.(*CombinedConfig).Manager()
 	targetVdc, err := GetVdcById(d, manager)
 	if err != nil {
-		return diag.Errorf("error getting target vdc: %s", err)
+		return diag.Errorf("[ERROR-055] crash via getting vdc by id: %s", err)
 	}
 
 	target, err := checkDatasourceNameOrId(d)
 	if err != nil {
-		return diag.Errorf("error getting affinity group: %s", err)
+		return diag.Errorf("[ERROR-055]: %s", err)
 	}
 
-	var targetAffinityGroup *bcc.AffinityGroup
-	if target == "id" {
+	var affinityGroup *bcc.AffinityGroup
+	if strings.EqualFold(target, "id") {
 		id := d.Get("id").(string)
-		targetAffinityGroup, err = manager.GetAffinityGroup(id)
+		affinityGroup, err = manager.GetAffinityGroup(id)
 		if err != nil {
-			return diag.Errorf("error getting affinity group by id='%s': %s", id, err)
+			return diag.Errorf("[ERROR-055] crash via getting affinity group by id='%s': %s", id, err)
 		}
 	} else {
-		targetAffinityGroup, err = GetAffinityGroupByName(d, manager, targetVdc)
+		affinityGroup, err = GetAffinityGroupByName(d, manager, targetVdc)
 		if err != nil {
-			return diag.Errorf("error getting affinity group by name='%s': %s", d.Get("name").(string), err)
+			return diag.Errorf("[ERROR-055] crash via getting affinity group by name='%s': %s", d.Get("name").(string), err)
 		}
 	}
 
-	vms := make([]map[string]interface{}, len(targetAffinityGroup.Vms))
-	for i, vm := range targetAffinityGroup.Vms {
+	vms := make([]map[string]interface{}, len(affinityGroup.Vms))
+	for i, vm := range affinityGroup.Vms {
 		vms[i] = map[string]interface{}{"id": vm.ID, "name": vm.Name}
 	}
 
 	fields := map[string]interface{}{
-		"vdc_id":      targetAffinityGroup.Vdc.ID,
-		"id":          targetAffinityGroup.ID,
-		"name":        targetAffinityGroup.Name,
-		"description": targetAffinityGroup.Description,
-		"policy":      targetAffinityGroup.Policy,
-		"reboot":      targetAffinityGroup.Reboot,
+		"vdc_id":      affinityGroup.Vdc.ID,
+		"id":          affinityGroup.ID,
+		"name":        affinityGroup.Name,
+		"description": affinityGroup.Description,
+		"policy":      affinityGroup.Policy,
 		"vms":         vms,
 	}
 
 	if err := setResourceDataFromMap(d, fields); err != nil {
-		return diag.Errorf("[ERROR-042]: crash via setting resource data: %s", err)
+		return diag.Errorf("[ERROR-055]: crash via setting resource data: %s", err)
 	}
 
 	return nil

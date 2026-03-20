@@ -11,8 +11,8 @@ import (
 
 func dataSourcePorts() *schema.Resource {
 	args := Defaults()
-	args.injectContextVdcById()
-	args.injectResultListPort()
+	args.injectContextRequiredVdc()
+	args.injectContextDataPortList()
 
 	return &schema.Resource{
 		ReadContext: dataSourcePortsRead,
@@ -22,35 +22,46 @@ func dataSourcePorts() *schema.Resource {
 
 func dataSourcePortsRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	targetVdc, err := GetVdcById(d, manager)
+
+	vdc, err := GetVdcById(d, manager)
 	if err != nil {
-		return diag.Errorf("Error getting vdc: %s", err)
+		return diag.Errorf("[ERROR-027] crash via getting vdc: %s", err)
 	}
 
-	allPorts, err := targetVdc.GetPorts()
+	portList, err := vdc.GetPorts()
 	if err != nil {
-		return diag.Errorf("Error retrieving ports: %s", err)
+		return diag.Errorf("[ERROR-027] crash via retrieving ports: %s", err)
 	}
 
-	flattenedRecords := make([]map[string]interface{}, len(allPorts))
-	for i, port := range allPorts {
-		flattenedRecords[i] = map[string]interface{}{
-			"id":         port.ID,
-			"ip_address": port.IpAddress,
-			"network":    port.Network.ID,
+	portMap := make([]map[string]interface{}, len(portList))
+	for i, port := range portList {
+		firewallTemplates := make([]string, len(port.FirewallTemplates))
+		for i, firewall := range port.FirewallTemplates {
+			firewallTemplates[i] = firewall.ID
+		}
+
+		portMap[i] = map[string]interface{}{
+			"id":                 port.ID,
+			"ip_address":         port.IpAddress,
+			"network":            port.Network.ID,
+			"firewall_templates": firewallTemplates,
+			"tags":               marshalTagNames(port.Tags),
 		}
 	}
 
-	hash, err := hashstructure.Hash(allPorts, hashstructure.FormatV2, nil)
+	hash, err := hashstructure.Hash(portList, hashstructure.FormatV2, nil)
 	if err != nil {
-		diag.Errorf("unable to set `ports` attribute: %s", err)
+		diag.Errorf("[ERROR-027] crash via calculate hash: %s", err)
 	}
 
-	d.SetId(fmt.Sprintf("port/%d", hash))
-
-	if err := d.Set("ports", flattenedRecords); err != nil {
-		return diag.Errorf("unable to set `ports` attribute: %s", err)
+	fields := map[string]interface{}{
+		"id":     fmt.Sprintf("port/%d", hash),
+		"vdc_id": vdc.ID,
+		"ports":  portMap,
 	}
 
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-027] crash via set attrs: %s", err)
+	}
 	return nil
 }

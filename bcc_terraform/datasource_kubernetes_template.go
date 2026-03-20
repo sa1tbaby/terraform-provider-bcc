@@ -2,6 +2,7 @@ package bcc_terraform
 
 import (
 	"context"
+	"strings"
 
 	"github.com/basis-cloud/bcc-go/bcc"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -11,7 +12,7 @@ import (
 func dataSourceKubernetesTemplate() *schema.Resource {
 	args := Defaults()
 	args.injectResultKubernetesTemplate()
-	args.injectContextVdcById()
+	args.injectContextRequiredVdc()
 	args.injectContextGetKubernetesTemplate() // override name
 
 	return &schema.Resource{
@@ -22,40 +23,41 @@ func dataSourceKubernetesTemplate() *schema.Resource {
 
 func dataSourceKubernetesTemplateRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	targetVdc, err := GetVdcById(d, manager)
-	if err != nil {
-		return diag.Errorf("Error getting vdc: %s", err)
-	}
 
 	target, err := checkDatasourceNameOrId(d)
 	if err != nil {
-		return diag.Errorf("Error getting KubernetesTemplate: %s", err)
+		return diag.Errorf("[ERROR-036] crash via  getting KubernetesTemplate: %s", err)
 	}
-	var targetKubernetesTemplate *bcc.KubernetesTemplate
-	if target == "id" {
-		targetKubernetesTemplate, err = manager.GetKubernetesTemplate(d.Get("id").(string))
+
+	var k8sTemplate *bcc.KubernetesTemplate
+	if strings.EqualFold(target, "id") {
+		k8sTemplateId := d.Get("id").(string)
+		k8sTemplate, err = manager.GetKubernetesTemplate(k8sTemplateId)
 		if err != nil {
-			return diag.Errorf("Error getting KubernetesTemplate: %s", err)
+			return diag.Errorf("[ERROR-036] crash via getting KubernetesTemplate: %s", err)
 		}
 	} else {
-		targetKubernetesTemplate, err = GetKubernetesTemplateByName(d, manager, targetVdc)
+		vdc, err := GetVdcById(d, manager)
 		if err != nil {
-			return diag.Errorf("Error getting KubernetesTemplate: %s", err)
+			return diag.Errorf("[ERROR-036] crash via getting vdc: %s", err)
+		}
+
+		k8sTemplate, err = GetKubernetesTemplateByName(d, manager, vdc)
+		if err != nil {
+			return diag.Errorf("[ERROR-036] crash via getting KubernetesTemplate: %s", err)
 		}
 	}
 
-	flatten := map[string]interface{}{
-		"id":           targetKubernetesTemplate.ID,
-		"name":         targetKubernetesTemplate.Name,
-		"min_node_cpu": targetKubernetesTemplate.MinNodeCpu,
-		"min_node_ram": targetKubernetesTemplate.MinNodeRam,
-		"min_node_hdd": targetKubernetesTemplate.MinNodeHdd,
+	fields := map[string]interface{}{
+		"id":           k8sTemplate.ID,
+		"name":         k8sTemplate.Name,
+		"min_node_cpu": k8sTemplate.MinNodeCpu,
+		"min_node_ram": k8sTemplate.MinNodeRam,
+		"min_node_hdd": k8sTemplate.MinNodeHdd,
 	}
 
-	if err := setResourceDataFromMap(d, flatten); err != nil {
-		return diag.FromErr(err)
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-036] crash via set attrs: %s", err)
 	}
-
-	d.SetId(targetKubernetesTemplate.ID)
 	return nil
 }

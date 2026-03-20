@@ -10,7 +10,7 @@ import (
 
 func dataSourceProject() *schema.Resource {
 	args := Defaults()
-	args.injectResultProject()
+	args.injectContextDataProject()
 	args.injectContextGetProject()
 
 	return &schema.Resource{
@@ -24,32 +24,32 @@ func dataSourceProjectRead(ctx context.Context, d *schema.ResourceData, meta int
 
 	target, err := checkDatasourceNameOrId(d)
 	if err != nil {
-		return diag.Errorf("Error getting project: %s", err)
+		return diag.Errorf("[ERROR-002] crash via chose target: %s", err)
 	}
-	var targetProject *bcc.Project
+
+	var project *bcc.Project
 	if target == "id" {
-		targetProject, err = manager.GetProject(d.Get("id").(string))
+		projectId := d.Get("id").(string)
+		project, err = manager.GetProject(projectId)
 		if err != nil {
-			return diag.Errorf("Error getting project: %s", err)
+			return diag.Errorf("[ERROR-002] crash via getting project by id=%s: %s", projectId, err)
 		}
 	} else {
-		targetProject, err = GetProjectByName(d, manager)
+		project, err = GetProjectByName(d, manager)
 		if err != nil {
-			return diag.Errorf("Error getting project: %s", err)
+			return diag.Errorf("[ERROR-002] crash via getting project by name: %s", err)
 		}
 	}
 
-	flattenedProject := map[string]interface{}{
-		"id":   targetProject.ID,
-		"name": targetProject.Name,
-		// "project_id":   nil,
-		// "project_name": nil,
+	config := map[string]interface{}{
+		"id":   project.ID,
+		"name": project.Name,
+		"tags": marshalTagNames(project.Tags),
 	}
 
-	if err := setResourceDataFromMap(d, flattenedProject); err != nil {
-		return diag.FromErr(err)
+	if err := setResourceDataFromMap(d, config); err != nil {
+		return diag.Errorf("[ERROR-002] crash via set attrs: %s", err)
 	}
 
-	d.SetId(targetProject.ID)
 	return nil
 }

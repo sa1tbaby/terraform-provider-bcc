@@ -11,8 +11,8 @@ import (
 
 func dataSourceS3Storages() *schema.Resource {
 	args := Defaults()
-	args.injectContextProjectById()
-	args.injectResultListS3Storage()
+	args.injectContextRequiredProject()
+	args.injectContextDataS3List()
 
 	return &schema.Resource{
 		ReadContext: dataSourceS3Read,
@@ -22,38 +22,44 @@ func dataSourceS3Storages() *schema.Resource {
 
 func dataSourceS3Read(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
+
 	project, err := GetProjectById(d, manager)
 	if err != nil {
-		return diag.Errorf("Error getting project: %s", err)
+		return diag.Errorf("[ERROR-033] crash via getting project: %s", err)
 	}
 
-	s3_storages, err := project.GetS3Storages()
+	s3storageList, err := project.GetS3Storages()
 	if err != nil {
-		return diag.Errorf("Error retrieving storages: %s", err)
+		return diag.Errorf("[ERROR-033] crash via retrieving storages: %s", err)
 	}
 
-	flattenedRecords := make([]map[string]interface{}, len(s3_storages))
-	for i, s3 := range s3_storages {
-		flattenedRecords[i] = map[string]interface{}{
+	s3Map := make([]map[string]interface{}, len(s3storageList))
+	for i, s3 := range s3storageList {
+		s3Map[i] = map[string]interface{}{
 			"id":              s3.ID,
 			"name":            s3.Name,
 			"backend":         s3.Backend,
 			"client_endpoint": s3.ClientEndpoint,
 			"access_key":      s3.AccessKey,
 			"secret_key":      s3.SecretKey,
+			"tags":            marshalTagNames(s3.Tags),
 		}
 
 	}
 
-	hash, err := hashstructure.Hash(s3_storages, hashstructure.FormatV2, nil)
+	hash, err := hashstructure.Hash(s3storageList, hashstructure.FormatV2, nil)
 	if err != nil {
-		diag.Errorf("unable to set `s3_storages` attribute: %s", err)
+		diag.Errorf("[ERROR-033] crash via calculate hash: %s", err)
 	}
 
-	d.SetId(fmt.Sprintf("s3_storages/%d", hash))
+	fields := map[string]interface{}{
+		"id":          fmt.Sprintf("s3_storages/%d", hash),
+		"project_id":  project.ID,
+		"s3_storages": s3Map,
+	}
 
-	if err := d.Set("s3_storages", flattenedRecords); err != nil {
-		return diag.Errorf("unable to set `s3_storages` attribute: %s", err)
+	if err = setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-033] crash via set attrs: %s", err)
 	}
 
 	return nil

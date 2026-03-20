@@ -2,6 +2,7 @@ package bcc_terraform
 
 import (
 	"context"
+	"strings"
 
 	"github.com/basis-cloud/bcc-go/bcc"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -10,8 +11,8 @@ import (
 
 func dataSourceNetwork() *schema.Resource {
 	args := Defaults()
-	args.injectResultNetwork()
-	args.injectContextVdcByIdForData()
+	args.injectContextDataNetwork()
+	args.injectContextRequiredVdcForData()
 	args.injectContextGetNetwork()
 
 	return &schema.Resource{
@@ -22,42 +23,47 @@ func dataSourceNetwork() *schema.Resource {
 
 func dataSourceNetworkRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	targetVdc, err := GetVdcById(d, manager)
-	if err != nil {
-		return diag.Errorf("Error getting vdc: %s", err)
-	}
 
 	target, err := checkDatasourceNameOrId(d)
 	if err != nil {
-		return diag.Errorf("Error getting network: %s", err)
+		return diag.Errorf("[ERROR-010] crash via chose target: %s", err)
 	}
-	var targetNetwork *bcc.Network
-	if target == "id" {
-		targetNetwork, err = manager.GetNetwork(d.Get("id").(string))
+
+	var network *bcc.Network
+	if strings.EqualFold(target, "id") {
+		networkId := d.Get("id").(string)
+		network, err = manager.GetNetwork(networkId)
 		if err != nil {
-			return diag.Errorf("Error getting network: %s", err)
+			return diag.Errorf("[ERROR-010] crash via getting network by id=%s: %s", networkId, err)
+		}
+	} else if strings.EqualFold(target, "name") {
+		vdc, err := GetVdcById(d, manager)
+		if err != nil {
+			return diag.Errorf("[ERROR-010] crash via getting vdc: %s", err)
+		}
+
+		network, err = GetNetworkByName(d, manager, vdc)
+		if err != nil {
+			return diag.Errorf("[ERROR-010] crash via getting network: %s", err)
+
 		}
 	} else {
-		targetNetwork, err = GetNetworkByName(d, manager, targetVdc)
-		if err != nil {
-			return diag.Errorf("Error getting network: %s", err)
-
-		}
+		return diag.Errorf("For getting the network must be specified id or name")
 	}
 
-	allSubnets, err := targetNetwork.GetSubnets()
+	subnets, err := network.GetSubnets()
 	if err != nil {
-		return diag.Errorf("Error getting subnets")
+		return diag.Errorf("[ERROR-010] crash via getting subnets")
 	}
 
-	flatten2 := make([]map[string]interface{}, len(allSubnets))
-	for i, subnet := range allSubnets {
+	subnetsMap := make([]map[string]interface{}, len(subnets))
+	for i, subnet := range subnets {
 		dnsStrings := make([]string, len(subnet.DnsServers))
-		for i3, dns := range subnet.DnsServers {
-			dnsStrings[i3] = dns.DNSServer
+		for j, dns := range subnet.DnsServers {
+			dnsStrings[j] = dns.DNSServer
 		}
 
-		flatten2[i] = map[string]interface{}{
+		subnetsMap[i] = map[string]interface{}{
 			"id":       subnet.ID,
 			"cidr":     subnet.CIDR,
 			"dhcp":     subnet.IsDHCP,
@@ -68,17 +74,19 @@ func dataSourceNetworkRead(ctx context.Context, d *schema.ResourceData, meta int
 		}
 	}
 
-	flatten := map[string]interface{}{
-		"id":      targetNetwork.ID,
-		"name":    targetNetwork.Name,
-		"subnets": flatten2,
-		"mtu":     targetNetwork.Mtu,
+	fields := map[string]interface{}{
+		"id":       network.ID,
+		"name":     network.Name,
+		"vdc_id":   network.Vdc.Id,
+		"subnets":  subnetsMap,
+		"mtu":      network.Mtu,
+		"external": network.External,
+		"tags":     marshalTagNames(network.Tags),
 	}
 
-	if err := setResourceDataFromMap(d, flatten); err != nil {
-		return diag.FromErr(err)
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-010] crash via set attrs: %s", err)
 	}
 
-	d.SetId(targetNetwork.ID)
 	return nil
 }

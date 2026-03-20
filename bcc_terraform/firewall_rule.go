@@ -4,7 +4,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
-func (args *Arguments) injectCreateFirewallRule() {
+func (args *Arguments) injectContextResourceFirewallRule() {
 	args.merge(Arguments{
 		"direction": {
 			Type:        schema.TypeString,

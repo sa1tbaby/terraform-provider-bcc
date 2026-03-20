@@ -12,7 +12,7 @@ import (
 func dataSourceHypervisors() *schema.Resource {
 	args := Defaults()
 	args.injectResultListHypervisor()
-	args.injectContextProjectById()
+	args.injectContextRequiredProject()
 
 	return &schema.Resource{
 		ReadContext: dataSourceHypervisorsRead,
@@ -22,37 +22,42 @@ func dataSourceHypervisors() *schema.Resource {
 
 func dataSourceHypervisorsRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	targetProject, err := GetProjectById(d, manager)
+	project, err := GetProjectById(d, manager)
 	if err != nil {
-		return diag.Errorf("Error getting project: %s", err)
+		return diag.Errorf("[ERROR-005] crash via getting project: %s", err)
 	}
 
-	hypervisors, err := targetProject.GetAvailableHypervisors()
+	hypervisorList, err := project.GetAvailableHypervisors()
 	if err != nil {
-		return diag.Errorf("Error getting available hypervisors")
+		return diag.Errorf("[ERROR-005] crash via getting available hypervisors")
 	}
 
-	flattenedHypervisors := make([]map[string]interface{}, len(hypervisors))
-	for i, hypervisor := range hypervisors {
-		flattenedHypervisors[i] = map[string]interface{}{
-			"id":   hypervisor.ID,
-			"name": hypervisor.Name,
-			"type": hypervisor.Type,
-			// "project_id": targetProject.ID,
+	hypervisorMap := make([]map[string]interface{}, len(hypervisorList))
+	for i, hypervisor := range hypervisorList {
+		hypervisorMap[i] = map[string]interface{}{
+			"id":               hypervisor.ID,
+			"name":             hypervisor.Name,
+			"type":             hypervisor.Type,
+			"cpu_per_vm":       hypervisor.CpuPerVm,
+			"ram_per_vm":       hypervisor.RamPerVm,
+			"disks_per_vm":     hypervisor.DisksPerVm,
+			"ports_per_device": hypervisor.PortsPerDevice,
 		}
 	}
 
-	hash, err := hashstructure.Hash(hypervisors, hashstructure.FormatV2, nil)
+	hash, err := hashstructure.Hash(hypervisorList, hashstructure.FormatV2, nil)
 	if err != nil {
-		diag.Errorf("unable to set `hypervisors` attribute: %s", err)
+		diag.Errorf("[ERROR-005] crash via calculate hash: %s", err)
 	}
 
-	d.SetId(fmt.Sprintf("hypervisors/%d", hash))
-	// d.Set("project_id", nil)
-	// d.Set("project_name", nil)
+	fields := map[string]interface{}{
+		"id":          fmt.Sprintf("hypervisors/%d", hash),
+		"project_id":  project.ID,
+		"hypervisors": hypervisorMap,
+	}
 
-	if err := d.Set("hypervisors", flattenedHypervisors); err != nil {
-		return diag.Errorf("unable to set `hypervisors` attribute: %s", err)
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-005] crash via set attrs: %s", err)
 	}
 
 	return nil

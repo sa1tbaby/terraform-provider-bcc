@@ -24,7 +24,7 @@ func (args *Arguments) injectContextGetDns() {
 	})
 }
 
-func (args *Arguments) injectContextDnsById() {
+func (args *Arguments) injectContextRequiredDns() {
 	args.merge(Arguments{
 		"dns_id": {
 			Type:        schema.TypeString,
@@ -35,7 +35,7 @@ func (args *Arguments) injectContextDnsById() {
 	})
 }
 
-func (args *Arguments) injectCreateDns() {
+func (args *Arguments) injectContextResourceDns() {
 	args.merge(Arguments{
 		"name": {
 			Type:     schema.TypeString,
@@ -52,7 +52,7 @@ func (args *Arguments) injectCreateDns() {
 	})
 }
 
-func (args *Arguments) injectResultDns() {
+func (args *Arguments) injectContextDataDns() {
 	args.merge(Arguments{
 		"id": {
 			Type:        schema.TypeString,
@@ -64,12 +64,13 @@ func (args *Arguments) injectResultDns() {
 			Computed:    true,
 			Description: "name of the Dns",
 		},
+		"tags": newTagNamesDataSchema("tags of the Dns"),
 	})
 }
 
-func (args *Arguments) injectResultListDns() {
+func (args *Arguments) injectContextDataDnsList() {
 	s := Defaults()
-	s.injectResultDns()
+	s.injectContextDataDns()
 
 	args.merge(Arguments{
 		"dnss": {

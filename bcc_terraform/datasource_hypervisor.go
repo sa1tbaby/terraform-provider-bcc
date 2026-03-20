@@ -2,6 +2,7 @@ package bcc_terraform
 
 import (
 	"context"
+	"strings"
 
 	"github.com/basis-cloud/bcc-go/bcc"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -11,7 +12,7 @@ import (
 func dataSourceHypervisor() *schema.Resource {
 	args := Defaults()
 	args.injectResultHypervisor()
-	args.injectContextProjectById()
+	args.injectContextRequiredProject()
 	args.injectContextGetHypervisor()
 
 	return &schema.Resource{
@@ -22,39 +23,42 @@ func dataSourceHypervisor() *schema.Resource {
 
 func dataSourceHypervisorRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	targetProject, err := GetProjectById(d, manager)
+	project, err := GetProjectById(d, manager)
 	if err != nil {
-		return diag.Errorf("Error getting project: %s", err)
+		return diag.Errorf("[ERROR-004] crash via getting project: %s", err)
 	}
 
 	target, err := checkDatasourceNameOrId(d)
 	if err != nil {
-		return diag.Errorf("Error getting hypervisor: %s", err)
+		return diag.Errorf("[ERROR-004] crash via getting hypervisor: %s", err)
 	}
-	var targetHypervisor *bcc.Hypervisor
-	if target == "id" {
-		targetHypervisor, err = GetHypervisorByIdRead(d, manager, targetProject)
+
+	var hypervisor *bcc.Hypervisor
+	if strings.EqualFold(target, "id") {
+		hypervisor, err = GetHypervisorByIdRead(d, manager, project)
 		if err != nil {
-			return diag.Errorf("Error getting hypervisor: %s", err)
+			return diag.Errorf("[ERROR-004] crash via getting hypervisor: %s", err)
 		}
 	} else {
-		targetHypervisor, err = GetHypervisorByName(d, manager, targetProject)
+		hypervisor, err = GetHypervisorByName(d, manager, project)
 		if err != nil {
-			return diag.Errorf("Error getting hypervisor: %s", err)
+			return diag.Errorf("[ERROR-004] crash via getting hypervisor: %s", err)
 		}
 	}
 
-	flatten := map[string]interface{}{
-		"id":         targetHypervisor.ID,
-		"name":       targetHypervisor.Name,
-		"type":       targetHypervisor.Type,
-		"project_id": targetProject.ID,
+	fields := map[string]interface{}{
+		"id":               hypervisor.ID,
+		"name":             hypervisor.Name,
+		"type":             hypervisor.Type,
+		"project_id":       project.ID,
+		"cpu_per_vm":       hypervisor.CpuPerVm,
+		"ram_per_vm":       hypervisor.RamPerVm,
+		"ports_per_device": hypervisor.PortsPerDevice,
+		"disks_per_vm":     hypervisor.DisksPerVm,
 	}
 
-	if err := setResourceDataFromMap(d, flatten); err != nil {
-		return diag.FromErr(err)
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-004] crash via set attrs: %s", err)
 	}
-
-	d.SetId(targetHypervisor.ID)
 	return nil
 }

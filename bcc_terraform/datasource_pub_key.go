@@ -10,8 +10,8 @@ import (
 
 func dataSourcePublicKey() *schema.Resource {
 	args := Defaults()
-	args.injectResultPublicKey()
 	args.injectContextAccountById()
+	args.injectResultPublicKey()
 	args.injectContextGetPublicKey()
 
 	return &schema.Resource{
@@ -25,32 +25,33 @@ func dataSourcePublicKeyRead(ctx context.Context, d *schema.ResourceData, meta i
 
 	target, err := checkDatasourceNameOrId(d)
 	if err != nil {
-		return diag.Errorf("Error getting PublicKey: %s", err)
+		return diag.Errorf("[ERROR-038] crash via getting PublicKey: %s", err)
 	}
-	var targetPublicKey *bcc.PubKey
+
+	var publicKey *bcc.PubKey
 	if target == "id" {
-		targetPublicKey, err = manager.GetPublicKey(d.Get("id").(string))
+		pubKeyId := d.Get("id").(string)
+		publicKey, err = manager.GetPublicKey(pubKeyId)
 		if err != nil {
-			return diag.Errorf("Error getting PublicKey: %s", err)
+			return diag.Errorf("[ERROR-038] crash via getting PublicKey by id=%s: %s", pubKeyId, err)
 		}
 	} else {
-		targetPublicKey, err = GetPubKeyByName(d, manager)
+		publicKey, err = GetPubKeyByName(d, manager)
 		if err != nil {
-			return diag.Errorf("Error getting PublicKey: %s", err)
+			return diag.Errorf("Error getting PublicKey by name: %s", err)
 		}
 	}
 
 	flatten := map[string]interface{}{
-		"id":          targetPublicKey.ID,
-		"name":        targetPublicKey.Name,
-		"public_key":  targetPublicKey.Fingerprint,
-		"fingerprint": targetPublicKey.PublicKey,
+		"id":          publicKey.ID,
+		"name":        publicKey.Name,
+		"public_key":  publicKey.Fingerprint,
+		"fingerprint": publicKey.PublicKey,
 	}
 
 	if err := setResourceDataFromMap(d, flatten); err != nil {
-		return diag.FromErr(err)
+		return diag.Errorf("[ERROR-038] crash via set attrs: %s", err)
 	}
 
-	d.SetId(targetPublicKey.ID)
 	return nil
 }

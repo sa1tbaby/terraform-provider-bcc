@@ -11,7 +11,7 @@ import (
 
 func dataSourceTemplates() *schema.Resource {
 	args := Defaults()
-	args.injectContextVdcById()
+	args.injectContextRequiredVdc()
 	args.injectResultListTemplate()
 
 	return &schema.Resource{
@@ -22,36 +22,40 @@ func dataSourceTemplates() *schema.Resource {
 
 func dataSourceTemplatesRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	targetVdc, err := GetVdcById(d, manager)
+
+	vdc, err := GetVdcById(d, manager)
 	if err != nil {
-		return diag.Errorf("Error getting vdc: %s", err)
+		return diag.Errorf("[ERROR-018] crash via getting vdc: %s", err)
 	}
 
-	allTemplates, err := targetVdc.GetTemplates()
+	templateList, err := vdc.GetTemplates()
 	if err != nil {
-		return diag.Errorf("Error retrieving templates: %s", err)
+		return diag.Errorf("[ERROR-018] crash via retrieving templates: %s", err)
 	}
 
-	flattenedRecords := make([]map[string]interface{}, len(allTemplates))
-	for i, templates := range allTemplates {
-		flattenedRecords[i] = map[string]interface{}{
-			"id":       templates.ID,
-			"name":     templates.Name,
-			"min_cpu":  templates.MinCpu,
-			"min_ram":  templates.MinRam,
-			"min_disk": templates.MinHdd,
+	templateMap := make([]map[string]interface{}, len(templateList))
+	for i, template := range templateList {
+		templateMap[i] = map[string]interface{}{
+			"id":       template.ID,
+			"name":     template.Name,
+			"min_cpu":  template.MinCpu,
+			"min_ram":  template.MinRam,
+			"min_disk": template.MinHdd,
 		}
 	}
 
-	hash, err := hashstructure.Hash(allTemplates, hashstructure.FormatV2, nil)
+	hash, err := hashstructure.Hash(templateList, hashstructure.FormatV2, nil)
 	if err != nil {
-		diag.Errorf("unable to set `templates` attribute: %s", err)
+		diag.Errorf("[ERROR-018] crash via calculate hash: %s", err)
 	}
 
-	d.SetId(fmt.Sprintf("templates/%d", hash))
-
-	if err := d.Set("templates", flattenedRecords); err != nil {
-		return diag.Errorf("unable to set `templates` attribute: %s", err)
+	fields := map[string]interface{}{
+		"id":        fmt.Sprintf("templates/%d", hash),
+		"vdc_id":    vdc.ID,
+		"templates": templateMap,
+	}
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		diag.Errorf("[ERROR-018] crash via set attrs: %s", err)
 	}
 
 	return nil

@@ -2,6 +2,7 @@ package bcc_terraform
 
 import (
 	"context"
+	"strings"
 
 	"github.com/basis-cloud/bcc-go/bcc"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -11,8 +12,8 @@ import (
 func dataSourceVm() *schema.Resource {
 	args := Defaults()
 	args.injectResultVm()
-	args.injectContextVdcById()
-	args.injectContextGetVm() // override "name"
+	args.injectContextRequiredVdc()
+	args.injectContextGetVm()
 
 	return &schema.Resource{
 		ReadContext: dataSourceVmRead,
@@ -22,53 +23,93 @@ func dataSourceVm() *schema.Resource {
 
 func dataSourceVmRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	targetVdc, err := GetVdcById(d, manager)
-	if err != nil {
-		return diag.Errorf("Error getting vdc: %s", err)
-	}
+
 	target, err := checkDatasourceNameOrId(d)
 	if err != nil {
-		return diag.Errorf("Error getting vm: %s", err)
+		return diag.Errorf("[ERROR-022] crash via chose target: %s", err)
 	}
-	var targetVm *bcc.Vm
-	if target == "id" {
-		targetVm, err = manager.GetVm(d.Get("id").(string))
+
+	var vm *bcc.Vm
+	if strings.EqualFold(target, "id") {
+		vmId := d.Get("id").(string)
+		vm, err = manager.GetVm(vmId)
 		if err != nil {
-			return diag.Errorf("Error getting vm: %s", err)
+			return diag.Errorf("[ERROR-022] crash via getting vm by id: %s", err)
+		}
+	} else if strings.EqualFold(target, "name") {
+		vdc, err := GetVdcById(d, manager)
+		if err != nil {
+			return diag.Errorf("[ERROR-022] crash via getting vdc: %s", err)
+		}
+
+		vm, err = GetVmByName(d, manager, vdc)
+		if err != nil {
+			return diag.Errorf("[ERROR-022] crash via getting vm by name: %s", err)
 		}
 	} else {
-		targetVm, err = GetVmByName(d, manager, targetVdc)
-		if err != nil {
-			return diag.Errorf("Error getting vm: %s", err)
+		return diag.Errorf("[ERROR-022] id or name must be specified")
+	}
+
+	disks := make([]interface{}, 0)
+	systemDisk := make([]interface{}, 1)
+	for i, disk := range vm.Disks {
+		if i == 0 {
+			systemDisk[0] = map[string]interface{}{
+				"id":                 disk.ID,
+				"name":               "Основной диск",
+				"size":               disk.Size,
+				"storage_profile_id": disk.StorageProfile.ID,
+				"external_id":        disk.ExternalID,
+			}
+			continue
+		}
+		disks = append(disks, disk.ID)
+	}
+
+	ports := make([]interface{}, len(vm.Ports))
+	networks := make([]interface{}, len(vm.Ports))
+	for i, port := range vm.Ports {
+		ports[i] = port.ID
+		networks[i] = map[string]interface{}{
+			"id":         port.ID,
+			"ip_address": port.IpAddress,
 		}
 	}
-	flattenPorts := make([]string, len(targetVm.Ports))
-	for i, port := range targetVm.Ports {
-		flattenPorts[i] = port.ID
+
+	affGr := make([]string, len(vm.AffinityGroups))
+	for i, aff := range vm.AffinityGroups {
+		affGr[i] = aff.ID
 	}
 
-	flatten := map[string]interface{}{
-		"id":            targetVm.ID,
-		"name":          targetVm.Name,
-		"cpu":           targetVm.Cpu,
-		"ram":           targetVm.Ram,
-		"template_id":   targetVm.Template.ID,
-		"template_name": targetVm.Template.Name,
-		"power":         targetVm.Power,
-		"floating":      nil,
-		"floating_ip":   nil,
-		"ports":         flattenPorts,
+	fields := map[string]interface{}{
+		"id":              vm.ID,
+		"name":            vm.Name,
+		"description":     vm.Description,
+		"cpu":             vm.Cpu,
+		"ram":             vm.Ram,
+		"template_id":     vm.Template.ID,
+		"template_name":   vm.Template.Name,
+		"power":           vm.Power,
+		"platform":        vm.Platform.ID,
+		"hot_add":         vm.HotAdd,
+		"ports":           ports,
+		"networks":        networks,
+		"system_disk":     systemDisk,
+		"disks":           disks,
+		"affinity_groups": affGr,
+		"tags":            marshalTagNames(vm.Tags),
+		"floating":        false,
+		"floating_ip":     "",
 	}
 
-	if targetVm.Floating != nil {
-		flatten["floating"] = true
-		flatten["floating_ip"] = targetVm.Floating.IpAddress
+	if vm.Floating != nil {
+		fields["floating"] = true
+		fields["floating_ip"] = vm.Floating.IpAddress
 	}
 
-	if err := setResourceDataFromMap(d, flatten); err != nil {
-		return diag.FromErr(err)
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-022] crash via set attrs: %s", err)
 	}
 
-	d.SetId(targetVm.ID)
 	return nil
 }

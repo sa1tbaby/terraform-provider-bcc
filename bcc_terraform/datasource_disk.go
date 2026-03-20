@@ -2,6 +2,7 @@ package bcc_terraform
 
 import (
 	"context"
+	"strings"
 
 	"github.com/basis-cloud/bcc-go/bcc"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -10,8 +11,8 @@ import (
 
 func dataSourceDisk() *schema.Resource {
 	args := Defaults()
-	args.injectContextVdcById()
-	args.injectResultDisk()
+	args.injectContextRequiredVdc()
+	args.injectContextDataDisk()
 	args.injectContextGetDisk()
 
 	return &schema.Resource{
@@ -22,41 +23,45 @@ func dataSourceDisk() *schema.Resource {
 
 func dataSourceDiskRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	targetVdc, err := GetVdcById(d, manager)
-	if err != nil {
-		return diag.Errorf("Error getting vdc: %s", err)
-	}
 
 	target, err := checkDatasourceNameOrId(d)
 	if err != nil {
-		return diag.Errorf("Error getting disk: %s", err)
+		return diag.Errorf("[ERROR-015] crash getting disk: %s", err)
 	}
-	var targetDisk *bcc.Disk
-	if target == "id" {
-		targetDisk, err = manager.GetDisk(d.Get("id").(string))
+
+	var disk *bcc.Disk
+	if strings.EqualFold(target, "id") {
+		diskId := d.Get("id").(string)
+		disk, err = manager.GetDisk(diskId)
 		if err != nil {
-			return diag.Errorf("Error getting disk: %s", err)
+			return diag.Errorf("[ERROR-015] crash via getting disk by id=%s: %s", diskId, err)
 		}
+
 	} else {
-		targetDisk, err = GetDiskByName(d, manager, targetVdc)
+		targetVdc, err := GetVdcById(d, manager)
 		if err != nil {
-			return diag.Errorf("Error getting disk: %s", err)
+			return diag.Errorf("[ERROR-015] crash via getting vdc: %s", err)
+		}
+
+		disk, err = GetDiskByName(d, manager, targetVdc)
+		if err != nil {
+			return diag.Errorf("[ERROR-015] crash via getting disk by name: %s", err)
 		}
 	}
 
-	flatten := map[string]interface{}{
-		"id":                   targetDisk.ID,
-		"name":                 targetDisk.Name,
-		"size":                 targetDisk.Size,
-		"storage_profile_id":   targetDisk.StorageProfile.ID,
-		"storage_profile_name": targetDisk.StorageProfile.Name,
-		"external_id":          targetDisk.ExternalID,
+	fields := map[string]interface{}{
+		"id":                   disk.ID,
+		"name":                 disk.Name,
+		"size":                 disk.Size,
+		"storage_profile_id":   disk.StorageProfile.ID,
+		"storage_profile_name": disk.StorageProfile.Name,
+		"external_id":          disk.ExternalID,
+		"tags":                 marshalTagNames(disk.Tags),
 	}
 
-	if err := setResourceDataFromMap(d, flatten); err != nil {
+	if err := setResourceDataFromMap(d, fields); err != nil {
 		return diag.FromErr(err)
 	}
 
-	d.SetId(targetDisk.ID)
 	return nil
 }

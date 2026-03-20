@@ -11,7 +11,7 @@ import (
 
 func dataSourceKubernetesTemplates() *schema.Resource {
 	args := Defaults()
-	args.injectContextVdcById()
+	args.injectContextRequiredVdc()
 	args.injectResultListKubernetesTemplate()
 
 	return &schema.Resource{
@@ -22,19 +22,20 @@ func dataSourceKubernetesTemplates() *schema.Resource {
 
 func dataSourceKubernetesTemplateReadRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	targetVdc, err := GetVdcById(d, manager)
+
+	vdc, err := GetVdcById(d, manager)
 	if err != nil {
-		return diag.Errorf("Error getting vdc: %s", err)
+		return diag.Errorf("[ERROR-037] crash via getting vdc: %s", err)
 	}
 
-	allKubernetesTemplateRead, err := targetVdc.GetKubernetesTemplates()
+	k8sTmpList, err := vdc.GetKubernetesTemplates()
 	if err != nil {
-		return diag.Errorf("Error retrieving KubernetesTemplateRead: %s", err)
+		return diag.Errorf("[ERROR-037] crash via retrieving KubernetesTemplateRead: %s", err)
 	}
 
-	flattenedRecords := make([]map[string]interface{}, len(allKubernetesTemplateRead))
-	for i, KubernetesTemplateRead := range allKubernetesTemplateRead {
-		flattenedRecords[i] = map[string]interface{}{
+	k8sTmpMap := make([]map[string]interface{}, len(k8sTmpList))
+	for i, KubernetesTemplateRead := range k8sTmpList {
+		k8sTmpMap[i] = map[string]interface{}{
 			"id":           KubernetesTemplateRead.ID,
 			"name":         KubernetesTemplateRead.Name,
 			"min_node_cpu": KubernetesTemplateRead.MinNodeCpu,
@@ -43,15 +44,19 @@ func dataSourceKubernetesTemplateReadRead(ctx context.Context, d *schema.Resourc
 		}
 	}
 
-	hash, err := hashstructure.Hash(allKubernetesTemplateRead, hashstructure.FormatV2, nil)
+	hash, err := hashstructure.Hash(k8sTmpList, hashstructure.FormatV2, nil)
 	if err != nil {
-		diag.Errorf("unable to set `kubernetes_templates` attribute: %s", err)
+		diag.Errorf("[ERROR-037] crash via calculate hash: %s", err)
 	}
 
-	d.SetId(fmt.Sprintf("kubernetes_templates/%d", hash))
+	fields := map[string]interface{}{
+		"id":                   fmt.Sprintf("kubernetes_templates/%d", hash),
+		"vdc_id":               vdc.ID,
+		"kubernetes_templates": k8sTmpMap,
+	}
 
-	if err := d.Set("kubernetes_templates", flattenedRecords); err != nil {
-		return diag.Errorf("unable to set `kubernetes_templates` attribute: %s", err)
+	if err := setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-037] crash via set attrs: %s", err)
 	}
 
 	return nil

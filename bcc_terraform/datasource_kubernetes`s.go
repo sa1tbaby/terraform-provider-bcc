@@ -11,8 +11,8 @@ import (
 
 func dataSourceKubernetess() *schema.Resource {
 	args := Defaults()
-	args.injectContextVdcById()
-	args.injectResultListKubernetes()
+	args.injectContextRequiredVdc()
+	args.injectContextDataK8sList()
 
 	return &schema.Resource{
 		ReadContext: dataSourceKubernetessRead,
@@ -22,39 +22,35 @@ func dataSourceKubernetess() *schema.Resource {
 
 func dataSourceKubernetessRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
-	targetVdc, err := GetVdcById(d, manager)
+
+	vdc, err := GetVdcById(d, manager)
 	if err != nil {
-		return diag.Errorf("Error getting vdc: %s", err)
+		return diag.Errorf("[ERROR-035] crash via getting vdc: %s", err)
 	}
 
-	allk8s, err := targetVdc.GetKubernetes()
+	k8sList, err := vdc.GetKubernetes()
 	if err != nil {
-		return diag.Errorf("Error retrieving Kubernetess: %s", err)
+		return diag.Errorf("[ERROR-035] crash via retrieving Kubernetess: %s", err)
 	}
 
-	flattenedRecords := make([]map[string]interface{}, len(allk8s))
-	for i, targetKubernetes := range allk8s {
+	k8sMap := make([]map[string]interface{}, len(k8sList))
+	for i, targetKubernetes := range k8sList {
 
 		dashboard, err := targetKubernetes.GetKubernetesDashBoardUrl()
 		if err != nil {
-			return diag.Errorf("id: Error getting Kubernetes dashboard url: %s", err)
-		}
-		dashboard_url := fmt.Sprint(manager.BaseURL, *dashboard.DashBoardUrl)
-		err = targetKubernetes.GetKubernetesConfigUrl()
-		if err != nil {
-			return diag.Errorf("id: Error creating Kubernetes config file url: %s", err)
+			return diag.Errorf("[ERROR-035] crash via getting Kubernetes dashboard url: %s", err)
 		}
 
 		err = targetKubernetes.GetKubernetesConfigUrl()
 		if err != nil {
-			return diag.Errorf("id: Error creating Kubernetes config file url: %s", err)
+			return diag.Errorf("[ERROR-035] crash via creating Kubernetes config file url: %s", err)
 		}
 
 		vms := make([]*string, len(targetKubernetes.Vms))
 		for i, vm := range targetKubernetes.Vms {
 			vms[i] = &vm.ID
 		}
-		flattenedRecords[i] = map[string]interface{}{
+		k8sMap[i] = map[string]interface{}{
 			"id":                      targetKubernetes.ID,
 			"name":                    targetKubernetes.Name,
 			"node_cpu":                targetKubernetes.NodeCpu,
@@ -64,27 +60,32 @@ func dataSourceKubernetessRead(ctx context.Context, d *schema.ResourceData, meta
 			"nodes_count":             targetKubernetes.NodesCount,
 			"user_public_key_id":      targetKubernetes.UserPublicKey,
 			"node_storage_profile_id": targetKubernetes.NodeStorageProfile.ID,
-			"floating":                nil,
-			"floating_ip":             nil,
+			"floating":                false,
+			"floating_ip":             "",
 			"vms":                     vms,
-			"dashboard_url":           dashboard_url,
+			"dashboard_url":           fmt.Sprint(manager.BaseURL, *dashboard.DashBoardUrl),
+			"tags":                    marshalTagNames(targetKubernetes.Tags),
 		}
 
 		if targetKubernetes.Floating != nil {
-			flattenedRecords[i]["floating"] = true
-			flattenedRecords[i]["floating_ip"] = targetKubernetes.Floating.IpAddress
+			k8sMap[i]["floating"] = true
+			k8sMap[i]["floating_ip"] = targetKubernetes.Floating.IpAddress
 		}
 	}
 
-	hash, err := hashstructure.Hash(allk8s, hashstructure.FormatV2, nil)
+	hash, err := hashstructure.Hash(k8sList, hashstructure.FormatV2, nil)
 	if err != nil {
-		diag.Errorf("unable to set `kubernetess` attribute: %s", err)
+		diag.Errorf("[ERROR-035] crash via calculate hash: %s", err)
 	}
 
-	d.SetId(fmt.Sprintf("kubernetess/%d", hash))
+	fields := map[string]interface{}{
+		"id":          fmt.Sprintf("kubernetess/%d", hash),
+		"vdc_id":      vdc.ID,
+		"kubernetess": k8sMap,
+	}
 
-	if err := d.Set("kubernetess", flattenedRecords); err != nil {
-		return diag.Errorf("unable to set `kubernetess` attribute: %s", err)
+	if err = setResourceDataFromMap(d, fields); err != nil {
+		return diag.Errorf("[ERROR-035] crash via set attrs: %s", err)
 	}
 
 	return nil

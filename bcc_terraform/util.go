@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/basis-cloud/bcc-go/bcc"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/pkg/errors"
 )
@@ -202,6 +203,19 @@ func GetNetworkById(d *schema.ResourceData, manager *bcc.Manager, prefix *string
 
 	return targetNetwork, nil
 }
+func GetPaasTemplateByName(d *schema.ResourceData, manager *bcc.Manager, vdc *bcc.Vdc) (*bcc.PaasTemplate, error) {
+	paasTemplateList, err := manager.GetPaasTemplates(vdc.ID)
+	if err != nil {
+		return nil, errors.Wrap(err, "Error getting list of paas templates")
+	}
+	paasTemplateName := d.Get("name").(string)
+	for _, paasTemplate := range paasTemplateList {
+		if strings.EqualFold(paasTemplate.Name, paasTemplateName) {
+			return paasTemplate, nil
+		}
+	}
+	return nil, fmt.Errorf("ERROR: Paas template with name '%s' not found", paasTemplateName)
+}
 
 func GetNetworkByName(d *schema.ResourceData, manager *bcc.Manager, vdc *bcc.Vdc) (*bcc.Network, error) {
 	networks, err := manager.GetNetworks()
@@ -236,7 +250,7 @@ func GetAffinityGroupByName(d *schema.ResourceData, manager *bcc.Manager, vdc *b
 
 	name := d.Get("name").(string)
 	for _, affinityGroup := range affinityGroups {
-		if affinityGroup.Name == name && affinityGroup.Vdc.ID == vdc.ID {
+		if strings.EqualFold(affinityGroup.Name, name) && strings.EqualFold(affinityGroup.Vdc.ID, vdc.ID) {
 			targetAffinityGroup = affinityGroup
 			break
 		}
@@ -279,9 +293,9 @@ func GetHypervisorByName(d *schema.ResourceData, manager *bcc.Manager, project *
 
 	var targetHypervisor *bcc.Hypervisor
 
-	hypervisorName := strings.ToLower(d.Get("name").(string))
+	hypervisorName := d.Get("name").(string)
 	for _, hypervisor := range hypervisors {
-		if strings.ToLower(hypervisor.Name) == hypervisorName {
+		if strings.EqualFold(hypervisor.Name, hypervisorName) {
 			targetHypervisor = hypervisor
 			break
 		}
@@ -325,9 +339,9 @@ func GetHypervisorByIdRead(d *schema.ResourceData, manager *bcc.Manager, project
 
 	var targetHypervisor *bcc.Hypervisor
 
-	hypervisorId := d.Get("id")
+	hypervisorId := d.Get("id").(string)
 	for _, hypervisor := range hypervisors {
-		if hypervisor.ID == hypervisorId.(string) {
+		if strings.EqualFold(hypervisor.ID, hypervisorId) {
 			targetHypervisor = hypervisor
 			break
 		}
@@ -381,8 +395,8 @@ func GetProjectByName(d *schema.ResourceData, manager *bcc.Manager) (*bcc.Projec
 }
 
 func GetProjectById(d *schema.ResourceData, manager *bcc.Manager) (*bcc.Project, error) {
-	projectId := d.Get("project_id")
-	project, err := manager.GetProject(projectId.(string))
+	projectId := d.Get("project_id").(string)
+	project, err := manager.GetProject(projectId)
 	if err != nil {
 		return nil, errors.Wrapf(err, "Project with id '%s' not found", projectId)
 	}
@@ -478,8 +492,12 @@ func MakePrefix(prefix *string, name string) string {
 
 func setResourceDataFromMap(d *schema.ResourceData, m map[string]interface{}) error {
 	for key, value := range m {
+		if strings.EqualFold(key, "id") {
+			d.SetId(value.(string))
+			continue
+		}
 		if err := d.Set(key, value); err != nil {
-			return fmt.Errorf("ERROR: Unable to set `%s` attribute: %s", key, err)
+			return fmt.Errorf("unable to set attribute `%s`: %s", key, err)
 		}
 	}
 	return nil
@@ -651,13 +669,50 @@ func GetS3ById(d *schema.ResourceData, manager *bcc.Manager) (*bcc.S3Storage, er
 }
 
 func checkDatasourceNameOrId(d *schema.ResourceData) (search string, err error) {
-	id := d.Get("id").(string)
-	name := d.Get("name").(string)
-	if name == "" && id == "" {
-		return "", fmt.Errorf("Must be specified 'name' or 'id'")
+	_, idOk := d.GetOk("id")
+	_, nameOk := d.GetOk("name")
+
+	if nameOk && idOk {
+		return "", fmt.Errorf("can't use both 'name' and 'id' at the same time")
 	}
-	if id != "" {
+	if nameOk {
+		return "name", nil
+	} else if idOk {
 		return "id", nil
 	}
-	return "name", nil
+
+	return "", fmt.Errorf("must be specified 'name' or 'id'")
+}
+
+func resourceReadCheck(d *schema.ResourceData, err interface{}, msg string) diag.Diagnostics {
+	if err.(*bcc.ApiError).Code() == 404 {
+		d.SetId("")
+		return nil
+	} else {
+		return diag.Errorf("%s crash via read resource: %s", msg, err)
+	}
+}
+
+func ensureLocationCreated(vdcId string, manager *bcc.Manager) error {
+	vdc, err := manager.GetVdc(vdcId)
+	if err != nil {
+		return err
+	}
+	if vdc.Paas != nil {
+		return nil
+	}
+	err = manager.CreatePaasLocation(vdcId)
+	if err != nil {
+		return err
+	}
+	for {
+		vdc, err := manager.GetVdc(vdcId)
+		if err != nil {
+			return err
+		}
+		if vdc.Paas != nil && !vdc.Paas.Locked {
+			return nil
+		}
+		time.Sleep(time.Second)
+	}
 }

@@ -59,7 +59,28 @@ func (args *Arguments) injectLbaasPort() {
 	})
 }
 
-func (args *Arguments) injectCreateLbaas() {
+func (args *Arguments) injectDataLbaasPort() {
+	args.merge(Arguments{
+		"network_id": {
+			Type:     schema.TypeString,
+			Computed: true,
+			ValidateDiagFunc: validation.ToDiagFunc(
+				validation.StringIsNotEmpty,
+			),
+			Description: "id of the Network",
+		},
+		"ip_address": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "ip_address of the Port",
+			DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+				return new == ""
+			},
+		},
+	})
+}
+
+func (args *Arguments) injectContextResourceLbaas() {
 	lbaasPort := Defaults()
 	lbaasPort.injectLbaasPort()
 
@@ -98,7 +119,10 @@ func (args *Arguments) injectCreateLbaas() {
 	})
 }
 
-func (args *Arguments) injectResultLbaas() {
+func (args *Arguments) injectContextDataLbaas() {
+	lbaasPort := Defaults()
+	lbaasPort.injectLbaasPort()
+
 	args.merge(Arguments{
 		"id": {
 			Type:        schema.TypeString,
@@ -110,6 +134,15 @@ func (args *Arguments) injectResultLbaas() {
 			Computed:    true,
 			Description: "Lbaas name",
 		},
+		"port": {
+			Type:     schema.TypeList,
+			Computed: true,
+			Elem: &schema.Resource{
+
+				Schema: lbaasPort,
+			},
+			Description: "Lbaas port.",
+		},
 		"floating": {
 			Type:        schema.TypeBool,
 			Computed:    true,
@@ -120,12 +153,13 @@ func (args *Arguments) injectResultLbaas() {
 			Computed:    true,
 			Description: "public IP address of the load balancer. May be omitted",
 		},
+		"tags": newTagNamesDataSchema("tags of the Lbaas"),
 	})
 }
 
-func (args *Arguments) injectResultListLbaas() {
+func (args *Arguments) injectContextDataLbaasList() {
 	s := Defaults()
-	s.injectResultLbaas()
+	s.injectContextDataLbaas()
 
 	args.merge(Arguments{
 		"lbaass": {

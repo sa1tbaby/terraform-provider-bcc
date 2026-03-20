@@ -2,7 +2,7 @@ package bcc_terraform
 
 import (
 	"context"
-	"fmt"
+	"strings"
 
 	"github.com/basis-cloud/bcc-go/bcc"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -27,6 +27,7 @@ func dataSourcePaasTemplate() *schema.Resource {
 			"name": {
 				Type:        schema.TypeString,
 				Optional:    true,
+				Computed:    true,
 				Description: "Paas Template name",
 			},
 		},
@@ -36,39 +37,43 @@ func dataSourcePaasTemplate() *schema.Resource {
 func dataSourcePaasTemplateRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	manager := meta.(*CombinedConfig).Manager()
 	manager = manager.WithContext(ctx)
-	err := ensureLocationCreated(d.Get("vdc_id").(string), manager)
+
+	vdc, err := GetVdcById(d, manager)
+	if err != nil {
+		return diag.Errorf("[ERROR-010] crash via getting vdc: %s", err)
+	}
+
+	err = ensureLocationCreated(vdc.ID, manager)
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	idValue, ok := d.GetOk("id")
-	var template *bcc.PaasTemplate
-	if ok {
-		template, err = manager.GetPaasTemplate(idValue.(string), d.Get("vdc_id").(string))
+
+	target, err := checkDatasourceNameOrId(d)
+	if err != nil {
+		return diag.Errorf("[ERROR-041] crash via chose target: %s", err)
+	}
+
+	var paasTmp *bcc.PaasTemplate
+	if strings.EqualFold(target, "id") {
+		paasTmpId := d.Get("id").(string)
+		paasTmp, err = manager.GetPaasTemplate(paasTmpId, vdc.ID)
 		if err != nil {
-			if err.(*bcc.ApiError).Code() == 404 {
-				d.SetId("")
-				return nil
-			}
 			return diag.Errorf("Error getting paas template: %s", err)
 		}
 	} else {
-		templates, err := manager.GetPaasTemplates(d.Get("vdc_id").(string), bcc.Arguments{"name": d.Get("name").(string)})
+		paasTmp, err = GetPaasTemplateByName(d, manager, vdc)
 		if err != nil {
-			return diag.Errorf("Error getting paas template: %s", err)
+			return diag.Errorf("[ERROR-041] crash via getting paas template: %s", err)
 		}
-		if len(templates) == 0 {
-			d.SetId("")
-			return nil
-		}
-		template = templates[0]
 	}
-	flatten := map[string]interface{}{
-		"id":   template.ID,
-		"name": template.Name,
+
+	fields := map[string]interface{}{
+		"id":     paasTmp.ID,
+		"vdc_id": vdc.ID,
+		"name":   paasTmp.Name,
 	}
-	if err := setResourceDataFromMap(d, flatten); err != nil {
+	if err := setResourceDataFromMap(d, fields); err != nil {
 		return diag.FromErr(err)
 	}
-	d.SetId(fmt.Sprint(template.ID))
 	return nil
 }

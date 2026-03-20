@@ -48,6 +48,26 @@ func (args *Arguments) injectResultHypervisor() {
 			Computed:    true,
 			Description: "resource pool type",
 		},
+		"cpu_per_vm": {
+			Type:        schema.TypeInt,
+			Computed:    true,
+			Description: "cpu per vm",
+		},
+		"ram_per_vm": {
+			Type:        schema.TypeInt,
+			Computed:    true,
+			Description: "ram per vm",
+		},
+		"disks_per_vm": {
+			Type:        schema.TypeInt,
+			Computed:    true,
+			Description: "disks per vm",
+		},
+		"ports_per_device": {
+			Type:        schema.TypeInt,
+			Computed:    true,
+			Description: "ports per device",
+		},
 	})
 }
 

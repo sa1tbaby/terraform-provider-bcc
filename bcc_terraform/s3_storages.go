@@ -5,7 +5,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
-func (args *Arguments) injectContextGetS3Storage() {
+func (args *Arguments) injectContextGetS3() {
 	args.merge(Arguments{
 		"name": {
 			Type:        schema.TypeString,
@@ -22,7 +22,7 @@ func (args *Arguments) injectContextGetS3Storage() {
 	})
 }
 
-func (args *Arguments) injectContextS3StorageById() {
+func (args *Arguments) injectContextReqS3Id() {
 	args.merge(Arguments{
 		"s3_storage_id": {
 			Type:        schema.TypeString,
@@ -33,7 +33,7 @@ func (args *Arguments) injectContextS3StorageById() {
 	})
 }
 
-func (args *Arguments) injectCreateS3Storage() {
+func (args *Arguments) injectContextResourceS3() {
 	args.merge(Arguments{
 		"name": {
 			Type:     schema.TypeString,
@@ -70,7 +70,7 @@ func (args *Arguments) injectCreateS3Storage() {
 	})
 }
 
-func (args *Arguments) injectResultS3Storage() {
+func (args *Arguments) injectContextDataS3() {
 	args.merge(Arguments{
 		"id": {
 			Type:        schema.TypeString,
@@ -102,12 +102,13 @@ func (args *Arguments) injectResultS3Storage() {
 			Computed:    true,
 			Description: "secret_key for access to s3",
 		},
+		"tags": newTagNamesDataSchema("tags of the s3"),
 	})
 }
 
-func (args *Arguments) injectResultListS3Storage() {
+func (args *Arguments) injectContextDataS3List() {
 	s := Defaults()
-	s.injectResultS3Storage()
+	s.injectContextDataS3()
 
 	args.merge(Arguments{
 		"s3_storages": {

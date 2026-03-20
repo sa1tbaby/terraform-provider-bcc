@@ -5,7 +5,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
-func (args *Arguments) injectContextGetKubernetes() {
+func (args *Arguments) injectContextGetK8s() {
 	args.merge(Arguments{
 		"name": {
 			Type:        schema.TypeString,
@@ -32,7 +32,7 @@ func (args *Arguments) injectContextKubernetesById() {
 	})
 }
 
-func (args *Arguments) injectCreateKubernetes() {
+func (args *Arguments) injectContextResourceK8s() {
 	args.merge(Arguments{
 		"name": {
 			Type:     schema.TypeString,
@@ -110,7 +110,7 @@ func (args *Arguments) injectCreateKubernetes() {
 	})
 }
 
-func (args *Arguments) injectResultKubernetes() {
+func (args *Arguments) injectContextDataK8s() {
 	args.merge(Arguments{
 		"id": {
 			Type:        schema.TypeString,
@@ -178,12 +178,13 @@ func (args *Arguments) injectResultKubernetes() {
 			Computed:    true,
 			Description: "cluster management dashboard URL",
 		},
+		"tags": newTagNamesDataSchema("tags of the Kubernetes"),
 	})
 }
 
-func (args *Arguments) injectResultListKubernetes() {
+func (args *Arguments) injectContextDataK8sList() {
 	s := Defaults()
-	s.injectResultKubernetes()
+	s.injectContextDataK8s()
 
 	args.merge(Arguments{
 		"kubernetess": {
